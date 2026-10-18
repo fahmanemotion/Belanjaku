@@ -12,10 +12,7 @@ export function PageHead({ title, subtitle, actions }: { title: ReactNode; subti
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
-      <div className="tbar">
-        {actions}
-        <span className="chip-ex">Data contoh</span>
-      </div>
+      {actions && <div className="tbar">{actions}</div>}
     </div>
   );
 }
@@ -108,43 +105,57 @@ export function Modal({
   title: string;
   description: string;
   submitLabel: string;
-  onSubmit: () => void;
+  /** boleh async: selama berjalan tombol simpan terkunci agar data tidak terkirim dua kali */
+  onSubmit: () => void | Promise<void>;
   onClose: () => void;
   children: ReactNode;
   /** tombol konfirmasi berwarna merah untuk tindakan yang tidak bisa dibatalkan */
   bahaya?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [sedang, setSedang] = useState(false);
+  const tutupRef = useRef(onClose);
+  tutupRef.current = onClose;
+
+  // Fokus ke isian pertama hanya sekali saat modal dibuka
+  useEffect(() => {
+    formRef.current?.querySelector<HTMLElement>("input:not([type=file]),select,textarea")?.focus();
+  }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !sedang && tutupRef.current();
     window.addEventListener("keydown", onKey);
-    formRef.current?.querySelector<HTMLElement>("input,select,textarea")?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [sedang]);
 
-  const handle = (e: FormEvent) => {
+  const handle = async (e: FormEvent) => {
     e.preventDefault();
-    onSubmit();
+    if (sedang) return;
+    setSedang(true);
+    try {
+      await onSubmit();
+    } finally {
+      setSedang(false);
+    }
   };
 
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form ref={formRef} className="modal" role="dialog" aria-modal="true" aria-label={title} onSubmit={handle}>
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !sedang && onClose()}>
+      <form ref={formRef} className="modal" role="dialog" aria-modal="true" aria-label={title} aria-busy={sedang} onSubmit={handle}>
         <div className="mhead">
           <h3>{title}</h3>
-          <button type="button" className="more" onClick={onClose} aria-label="Tutup">
+          <button type="button" className="more" onClick={onClose} aria-label="Tutup" disabled={sedang}>
             <Icon name="close" size={16} />
           </button>
         </div>
         <p>{description}</p>
         <div className="form">{children}</div>
         <div className="mfoot">
-          <button type="button" className="btn soft" onClick={onClose}>
+          <button type="button" className="btn soft" onClick={onClose} disabled={sedang}>
             Batal
           </button>
-          <button type="submit" className={`btn ${bahaya ? "danger-solid" : "dark"}`}>
-            {submitLabel}
+          <button type="submit" className={`btn ${bahaya ? "danger-solid" : "dark"}`} disabled={sedang}>
+            {sedang ? "Menyimpan…" : submitLabel}
           </button>
         </div>
       </form>

@@ -11,12 +11,23 @@ import Icon from "./Icon";
 import { useStore } from "./StoreProvider";
 import { JENIS_BELANJA, NAMA_TAHAP, jenisBelanjaDariAkun } from "@/lib/data";
 import { hariIni, rupiah, sekarang, tanggalJam, tanggalPanjang, terbilang } from "@/lib/format";
-import type { Kegiatan } from "@/lib/types";
+import type { Aktivitas, Kegiatan } from "@/lib/types";
 
 export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
-  const { aktivitas, pengguna, penggunaAktif, referensi, namaUnit, namaAkun, infoPengguna, catat, cariMak } = useStore();
+  const { pengguna, penggunaAktif, referensi, namaUnit, namaAkun, infoPengguna, catatCetak, cariMak, jejakDokumen } = useStore();
   const [siap, setSiap] = useState(false);
   const [waktuCetak] = useState(sekarang);
+  /** riwayat lengkap dokumen dari database (null = sedang dimuat) */
+  const [riwayat, setRiwayat] = useState<Aktivitas[] | null>(null);
+
+  useEffect(() => {
+    let batal = false;
+    jejakDokumen(k.id).then((x) => !batal && setRiwayat(x));
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [k.id]);
 
   useEffect(() => {
     setSiap(true);
@@ -32,14 +43,14 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
   if (!siap) return null;
 
   const pembuat = infoPengguna(k.dibuatOleh);
-  const ppk = pengguna.find((u) => u.peran === "PPK" && u.aktif);
+  const ppk = pengguna.find((u) => u.peran === "PPK" && u.aktif && !u.dihapus);
   const jenis = jenisBelanjaDariAkun(k.akun);
   const namaJenis = JENIS_BELANJA.find((j) => j.kode === jenis)?.nama ?? "-";
   const namaDana = referensi.dana.find((d) => d.kode === k.dana)?.nama;
   const kalimat = terbilang(k.nilai);
   const mak = cariMak(k.mak);
   // Jejak dokumen urut dari yang paling awal (aksi cetak tidak ikut ditampilkan)
-  const jejak = aktivitas.filter((a) => a.objekId === k.id && a.jenis !== "Cetak").slice().reverse();
+  const jejak = (riwayat ?? []).filter((a) => a.jenis !== "Cetak").slice().reverse();
 
   const status =
     k.status +
@@ -47,7 +58,7 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
     (k.disahkan ? ` · disahkan ${k.disahkan.nomor}` : "");
 
   const cetak = () => {
-    catat({ jenis: "Cetak", modul: "Belanja", aksi: "mencetak lembar pengajuan", objekId: k.id, objekLabel: k.uraian });
+    catatCetak(k);
     window.print();
   };
 
@@ -117,7 +128,9 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
               <tr><th>Waktu</th><th>Pelaku</th><th>Aktivitas</th></tr>
             </thead>
             <tbody>
-              {jejak.length === 0 ? (
+              {riwayat === null ? (
+                <tr><td colSpan={3}>Memuat jejak dokumen…</td></tr>
+              ) : jejak.length === 0 ? (
                 <tr><td colSpan={3}>Belum ada aktivitas tercatat.</td></tr>
               ) : (
                 jejak.map((a) => (

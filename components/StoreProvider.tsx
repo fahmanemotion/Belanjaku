@@ -1,53 +1,37 @@
 "use client";
 
 /**
- * Penyimpanan state sementara (di memori browser) untuk seluruh modul.
- * State bertahan saat berpindah halaman, tetapi hilang saat halaman di-refresh.
+ * State bersama seluruh modul, tersambung ke database Supabase.
  *
- * Inti datanya satu daftar KEGIATAN yang mengalir lintas modul:
- *   Belanja (Draf → Diajukan → Diverifikasi → Disetujui)
- *   → Pencairan (SPP → Verifikasi → SPM → SP2D)
- *   → Pengesahan (disahkan pada SP3B BLU periode berjalan)
- *
- * Setiap aksi yang mengubah data dicatat ke RIWAYAT AKTIVITAS (jejak audit):
- * siapa, kapan, aksi apa, dokumen mana, dan kolom apa saja yang berubah.
- *
- * Sesi login & hak akses: lihat lib/akses.ts. Setiap aksi di bawah memeriksa izin peran
- * pengguna yang sedang masuk, sehingga tombol yang tersembunyi pun tidak bisa "diakali".
- *
- * Titik integrasi Supabase: ganti nilai awal useState dengan hasil query,
- * panggil insert/update Supabase di dalam fungsi aksi di bawah,
- * dan simpan log aktivitas ke tabel tersendiri (mis. "aktivitas") lewat fungsi catat().
+ * - Login: Supabase Auth (email + kata sandi). Profil, peran, dan unit dibaca dari tabel `pengguna`.
+ * - Membaca data: tabel/view Supabase yang dilindungi Row Level Security
+ *   (Operator Unit otomatis hanya menerima data unitnya).
+ * - Mengubah data: fungsi RPC di database (supabase/migrations) yang memeriksa peran, status dokumen,
+ *   dan menulis Riwayat Aktivitas dalam satu transaksi. Pemeriksaan izin di sini hanya untuk tampilan.
+ * - Kelola pengguna: API server app/api/pengguna (butuh kunci rahasia, hanya Administrator).
+ * - Realtime: perubahan oleh pengguna lain langsung dimuat ulang; saat tab kembali aktif data disegarkan.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { NAMA_BULAN, periodeBerjalan } from "@/lib/data";
+import { bolehModul, type Izin, type Modul } from "@/lib/akses";
 import {
-  AKSI_STATUS,
-  AKSI_TAHAP,
-  AKTIVITAS_AWAL,
-  KEGIATAN_AWAL,
-  NAMA_TAHAP,
-  PENGESAHAN_AWAL,
-  PENGGUNA_AWAL,
-  PERIODE_BERJALAN,
-  REFERENSI_AWAL,
-  labelJenisAkun,
-} from "@/lib/data";
-import { SANDI_DEMO, TAHAP_PENCAIRAN, bolehIzin, bolehModul, type Izin, type Modul } from "@/lib/akses";
-import { desimal, hariIni, rupiah, sekarang, tanggal } from "@/lib/format";
-import { POK_BAWAAN, susunBarisPok, susunDaftarMak, type BarisPok, type DataPok, type InfoMak } from "@/lib/mak";
-import type {
-  Aktivitas,
-  JenisSpp,
-  Kegiatan,
-  Pengguna,
-  PerubahanKolom,
-  Referensi,
-  Sp3bBlu,
-  StatusBelanja,
-} from "@/lib/types";
+  muatAktivitas,
+  muatIzin,
+  muatKegiatan,
+  muatPengguna,
+  muatPok,
+  muatReferensi,
+  muatSp3b,
+  pesanGalat,
+  rapikanKegiatan,
+  type BarisSp3b,
+} from "@/lib/db";
+import { susunBarisPok, susunDaftarMak, type BarisPok, type DataPok, type InfoMak } from "@/lib/mak";
+import { supabase, supabaseTerkonfigurasi } from "@/lib/supabase";
+import type { Aktivitas, JenisSpp, Kegiatan, Pengguna, Peran, Referensi, Sp3bBlu, StatusBelanja } from "@/lib/types";
 
 export type KegiatanBaru = Omit<Kegiatan, "id" | "status" | "spp" | "disahkan" | "dibuatOleh">;
-export type AktivitasBaru = Omit<Aktivitas, "id" | "waktu" | "oleh">;
+export type JenisReferensi = keyof Referensi;
 
 /** Hasil pemeriksaan hak ubah/hapus sebuah dokumen oleh pengguna yang sedang masuk */
 export interface IzinUbah {
@@ -55,59 +39,68 @@ export interface IzinUbah {
   alasan?: string;
 }
 
+type Hasil = { ok: true; nama?: string } | { ok: false; pesan: string };
+
 interface StoreValue {
   kegiatan: Kegiatan[];
+  /** rekap SP3B BLU periode sebelum bulan berjalan (bulan berjalan dihitung di modul Pengesahan) */
   pengesahan: Sp3bBlu[];
+  /** semua profil, termasuk yang sudah dihapus (untuk nama di riwayat) */
   pengguna: Pengguna[];
   referensi: Referensi;
   aktivitas: Aktivitas[];
 
   /* Sesi & hak akses */
-  /** sesi sudah dibaca dari penyimpanan browser (mencegah halaman login berkedip) */
+  /** pemeriksaan sesi awal selesai (mencegah halaman login berkedip) */
   siap: boolean;
-  /** ada pengguna aktif yang sedang masuk */
+  /** variabel lingkungan Supabase sudah diisi */
+  terkonfigurasi: boolean;
   sudahMasuk: boolean;
+  /** data awal sedang dimuat setelah masuk */
+  memuat: boolean;
   penggunaAktif: Pengguna;
-  masuk: (email: string, sandi: string) => { ok: true; nama: string } | { ok: false; pesan: string };
-  keluar: () => void;
-  /** pengguna yang sedang masuk punya izin ini? */
+  masuk: (email: string, sandi: string) => Promise<Hasil>;
+  keluar: () => Promise<void>;
+  gantiSandi: (lama: string, baru: string) => Promise<Hasil>;
   boleh: (izin: Izin) => boolean;
-  /** pengguna yang sedang masuk boleh membuka modul ini? */
   bolehBuka: (modul: Modul) => boolean;
-  catat: (a: AktivitasBaru) => void;
+  muatUlang: () => Promise<void>;
+
+  /* Riwayat aktivitas */
+  catatCetak: (k: Kegiatan) => void;
+  /** riwayat lengkap satu dokumen langsung dari database */
+  jejakDokumen: (id: string) => Promise<Aktivitas[]>;
 
   /* Belanja */
-  tambahKegiatan: (k: KegiatanBaru) => Kegiatan | null;
-  editKegiatan: (id: string, data: KegiatanBaru, catatan?: string) => { berubah: number; kembaliKeDraf: boolean };
-  hapusKegiatan: (id: string, alasan: string) => void;
+  tambahKegiatan: (k: KegiatanBaru) => Promise<Kegiatan | null>;
+  editKegiatan: (id: string, data: KegiatanBaru, catatan?: string) => Promise<{ berubah: number; kembaliKeDraf: boolean } | null>;
+  hapusKegiatan: (id: string, alasan: string) => Promise<boolean>;
   izinUbah: (k: Kegiatan) => IzinUbah;
-  ubahStatus: (id: string, status: StatusBelanja) => void;
+  ubahStatus: (id: string, status: StatusBelanja) => Promise<boolean>;
 
   /* Pencairan */
-  buatSpp: (id: string, jenis: JenisSpp, tanggal: string) => string;
-  majukanTahap: (id: string) => Kegiatan | undefined;
+  buatSpp: (id: string, jenis: JenisSpp, tanggal: string) => Promise<string | null>;
+  majukanTahap: (id: string) => Promise<Kegiatan | null>;
 
   /* Pengesahan */
-  sahkan: (ids: string[]) => void;
+  sahkan: (ids: string[]) => Promise<string | null>;
 
-  /* Pengguna */
-  tambahPengguna: (p: Omit<Pengguna, "id" | "aktif">) => void;
-  ubahPengguna: (id: string, data: Omit<Pengguna, "id">) => void;
-  toggleAktifPengguna: (id: string) => void;
-  hapusPengguna: (id: string) => void;
+  /* Pengguna (lewat API server) */
+  tambahPengguna: (p: { nama: string; email: string; peran: Peran; unit: string; sandi: string }) => Promise<boolean>;
+  ubahPengguna: (id: string, data: Omit<Pengguna, "id" | "dihapus">) => Promise<boolean>;
+  toggleAktifPengguna: (id: string) => Promise<boolean>;
+  hapusPengguna: (id: string) => Promise<boolean>;
+  aturUlangSandi: (id: string, sandi: string) => Promise<boolean>;
 
   /* Referensi */
-  setReferensi: (fn: (r: Referensi) => Referensi) => void;
+  simpanReferensi: (jenis: JenisReferensi, data: Record<string, string | boolean>, kode?: string) => Promise<boolean>;
 
-  /* Kertas Kerja POK (dari FA Detail SAKTI) */
-  dataPok: DataPok;
-  /** daftar MAK beserta pagu, realisasi, sisa (dipakai form pengajuan, tabel, dan cetak) */
+  /* Kertas Kerja POK (FA Detail SAKTI) */
+  dataPok: DataPok | null;
   daftarMak: InfoMak[];
-  /** baris tabel Kertas Kerja POK (per item, atau per MAK bila laporan tanpa item) */
   barisPok: BarisPok[];
   cariMak: (kode: string) => InfoMak | undefined;
-  /** ganti data POK dengan hasil upload FA Detail */
-  terapkanPok: (data: DataPok) => boolean;
+  terapkanPok: (data: DataPok, file?: File) => Promise<boolean>;
 
   namaUnit: (kode: string) => string;
   namaAkun: (kode: string) => string;
@@ -125,145 +118,305 @@ export function useStore(): StoreValue {
   return ctx;
 }
 
-/** Kunci penyimpanan sesi di sessionStorage (per tab browser) */
-const KUNCI_SESI = "belanjaku-sesi";
-/** Kunci penyimpanan data FA Detail hasil upload di localStorage */
-const KUNCI_POK = "belanjaku-pok";
-
 /** Status yang otomatis kembali ke Draf bila dokumennya diubah (perlu diverifikasi ulang) */
 export const STATUS_PERLU_ULANG: StatusBelanja[] = ["Diajukan", "Diverifikasi", "Disetujui", "Ditolak"];
 
+const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Unit", unit: "", aktif: false };
+const REFERENSI_KOSONG: Referensi = { akun: [], unit: [], penyedia: [], dana: [] };
+
+/** "SP3B-BLU-10/2026" → "2026-10" */
+const bulanSp3b = (nomor: string) => {
+  const m = nomor.match(/(\d{2})\/(\d{4})$/);
+  return m ? `${m[2]}-${m[1]}` : "";
+};
+
+/** Pesan galat login Supabase Auth dalam bahasa Indonesia */
+function pesanLogin(e: { message: string; status?: number; code?: string }): string {
+  const m = e.message ?? "";
+  if (e.code === "user_banned" || /banned/i.test(m)) return "Akun ini nonaktif. Hubungi Administrator.";
+  if (/Invalid login credentials/i.test(m)) return "Email atau kata sandi salah";
+  if (/Email not confirmed/i.test(m)) return "Email belum dikonfirmasi. Hubungi Administrator.";
+  if (e.status === 429 || /rate limit|too many/i.test(m)) return "Terlalu banyak percobaan masuk. Tunggu beberapa menit lalu coba lagi.";
+  return pesanGalat(e);
+}
+
 export default function StoreProvider({ children }: { children: ReactNode }) {
-  const [kegiatan, setKegiatan] = useState<Kegiatan[]>(KEGIATAN_AWAL);
-  const [pengesahan] = useState<Sp3bBlu[]>(PENGESAHAN_AWAL);
-  const [pengguna, setPengguna] = useState<Pengguna[]>(PENGGUNA_AWAL);
-  const [arsipPengguna, setArsipPengguna] = useState<Record<string, Pengguna>>({});
-  const [referensi, setRef] = useState<Referensi>(REFERENSI_AWAL);
-  const [aktivitas, setAktivitas] = useState<Aktivitas[]>(AKTIVITAS_AWAL);
-  const [dataPok, setDataPok] = useState<DataPok>(POK_BAWAAN);
-  const [sesi, setSesi] = useState<string | null>(null);
+  const [kegiatan, setKegiatan] = useState<Kegiatan[]>([]);
+  const [sp3b, setSp3b] = useState<BarisSp3b[]>([]);
+  const [pengguna, setPengguna] = useState<Pengguna[]>([]);
+  const [referensi, setReferensi] = useState<Referensi>(REFERENSI_KOSONG);
+  const [aktivitas, setAktivitas] = useState<Aktivitas[]>([]);
+  const [dataPok, setDataPok] = useState<DataPok | null>(null);
+  const [profil, setProfil] = useState<Pengguna | null>(null);
+  const [izinSaya, setIzinSaya] = useState<Set<string>>(new Set());
   const [siap, setSiap] = useState(false);
-  const urutLog = useRef(AKTIVITAS_AWAL.length);
+  const [memuat, setMemuat] = useState(false);
+  const profilRef = useRef<Pengguna | null>(null);
+  profilRef.current = profil;
 
   const [pesan, setPesan] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Pesan panjang (mis. galat dari server) tampil lebih lama
   const toast = useCallback((m: string) => {
     setPesan(m);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setPesan(null), 2800);
+    timer.current = setTimeout(() => setPesan(null), Math.min(7000, 2800 + Math.max(0, m.length - 60) * 40));
   }, []);
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  // Pulihkan sesi dari penyimpanan tab browser (tetap masuk setelah halaman di-refresh)
-  useEffect(() => {
-    try {
-      const id = sessionStorage.getItem(KUNCI_SESI);
-      if (id && PENGGUNA_AWAL.some((u) => u.id === id && u.aktif)) setSesi(id);
-    } catch {
-      /* penyimpanan diblokir — mulai dari halaman login */
-    }
-    // Data FA Detail terakhir yang diunggah di browser ini (bila ada)
-    try {
-      const simpan = localStorage.getItem(KUNCI_POK);
-      if (simpan) {
-        const d = JSON.parse(simpan) as DataPok;
-        if (Array.isArray(d?.mak) && d.mak.length > 0 && d.uraian && d.akun && d.sumber) setDataPok({ ...d, item: d.item ?? {} });
-      }
-    } catch {
-      /* data rusak / penyimpanan diblokir — pakai data bawaan */
-    }
-    setSiap(true);
+  /* ---------- Muat & segarkan data ---------- */
+  const bersihkan = useCallback(() => {
+    setProfil(null);
+    setIzinSaya(new Set());
+    setKegiatan([]);
+    setSp3b([]);
+    setPengguna([]);
+    setReferensi(REFERENSI_KOSONG);
+    setAktivitas([]);
+    setDataPok(null);
   }, []);
 
-  const penggunaAktif = pengguna.find((u) => u.id === sesi) ?? PENGGUNA_AWAL[0];
-  const sudahMasuk = sesi !== null && pengguna.some((u) => u.id === sesi && u.aktif);
-  const boleh = (izin: Izin) => sudahMasuk && bolehIzin(penggunaAktif.peran, izin);
-  const bolehBuka = (modul: Modul) => sudahMasuk && bolehModul(penggunaAktif.peran, modul);
-  /** Penjaga aksi: tampilkan pesan dan batalkan bila peran tidak berwenang */
+  const segarkan = useMemo(() => {
+    const sb = () => supabase();
+    return {
+      kegiatan: async () => setKegiatan(await muatKegiatan(sb())),
+      sp3b: async () => setSp3b(await muatSp3b(sb())),
+      pengguna: async () => {
+        const daftar = await muatPengguna(sb());
+        setPengguna(daftar);
+        // akun sendiri dinonaktifkan/dihapus Administrator → keluar
+        const saya = profilRef.current && daftar.find((u) => u.id === profilRef.current!.id);
+        if (profilRef.current && (!saya || !saya.aktif)) {
+          await sb().auth.signOut();
+          toast("Akun Anda dinonaktifkan oleh Administrator");
+        } else if (saya) setProfil(saya);
+      },
+      referensi: async () => setReferensi(await muatReferensi(sb())),
+      aktivitas: async () => setAktivitas(await muatAktivitas(sb())),
+      pok: async () => setDataPok(await muatPok(sb())),
+    };
+  }, [toast]);
+
+  const muatSemua = useCallback(async () => {
+    const hasil = await Promise.allSettled(Object.values(segarkan).map((f) => f()));
+    const gagal = hasil.find((h): h is PromiseRejectedResult => h.status === "rejected");
+    if (gagal) toast(`Sebagian data gagal dimuat: ${pesanGalat(gagal.reason)}`);
+  }, [segarkan, toast]);
+
+  /** Periksa profil pengguna Auth lalu muat data. Akun tanpa profil / nonaktif langsung dikeluarkan. */
+  const mulaiSesi = useCallback(
+    async (authId: string, catatMasuk: boolean): Promise<Hasil> => {
+      const sb = supabase();
+      const { data, error } = await sb
+        .from("pengguna")
+        .select("id, nama, email, peran, unit, aktif, deleted_at")
+        .eq("auth_id", authId)
+        .maybeSingle();
+      if (error) {
+        await sb.auth.signOut();
+        return { ok: false, pesan: pesanGalat(error) };
+      }
+      if (!data || data.deleted_at) {
+        await sb.auth.signOut();
+        return { ok: false, pesan: "Akun ini belum terdaftar di Belanjaku. Hubungi Administrator." };
+      }
+      if (!data.aktif) {
+        await sb.auth.signOut();
+        return { ok: false, pesan: "Akun ini nonaktif. Hubungi Administrator." };
+      }
+      const p: Pengguna = { id: data.id, nama: data.nama, email: data.email, peran: data.peran, unit: data.unit ?? "", aktif: true };
+      let izin: string[] = [];
+      try {
+        izin = await muatIzin(sb, p.peran);
+      } catch (e) {
+        await sb.auth.signOut();
+        return { ok: false, pesan: pesanGalat(e as Error) };
+      }
+      setIzinSaya(new Set(izin));
+      setProfil(p);
+      setMemuat(true);
+      if (catatMasuk) await sb.rpc("catat_aktivitas", { p_jenis: "Sesi", p_aksi: "masuk ke aplikasi" });
+      await muatSemua();
+      setMemuat(false);
+      return { ok: true, nama: p.nama };
+    },
+    [muatSemua],
+  );
+
+  // Sesi tersimpan di browser → langsung masuk; keluar dari tab lain → bersihkan
+  useEffect(() => {
+    if (!supabaseTerkonfigurasi) {
+      setSiap(true);
+      return;
+    }
+    const sb = supabase();
+    let batal = false;
+    (async () => {
+      const { data } = await sb.auth.getSession();
+      if (!batal && data.session) {
+        const h = await mulaiSesi(data.session.user.id, false);
+        if (!h.ok) toast(h.pesan);
+      }
+      if (!batal) setSiap(true);
+    })();
+    const { data: langganan } = sb.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") bersihkan();
+    });
+    return () => {
+      batal = true;
+      langganan.subscription.unsubscribe();
+    };
+  }, [mulaiSesi, bersihkan, toast]);
+
+  // Realtime + segarkan saat tab kembali aktif
+  const idSaya = profil?.id;
+  useEffect(() => {
+    if (!idSaya) return;
+    const sb = supabase();
+    const tunda: Record<string, ReturnType<typeof setTimeout>> = {};
+    const jadwal = (kunci: keyof typeof segarkan) => {
+      clearTimeout(tunda[kunci]);
+      tunda[kunci] = setTimeout(() => segarkan[kunci]().catch(() => {}), 600);
+    };
+    const kanal = sb
+      .channel("belanjaku-data")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pengajuan" }, () => jadwal("kegiatan"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "spp" }, () => jadwal("kegiatan"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "pengesahan" }, () => {
+        jadwal("kegiatan");
+        jadwal("sp3b");
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "aktivitas" }, () => jadwal("aktivitas"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "pengguna" }, () => jadwal("pengguna"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "unit_kerja" }, () => jadwal("referensi"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "penyedia" }, () => jadwal("referensi"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "akun" }, () => jadwal("referensi"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "sumber_dana" }, () => jadwal("referensi"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "pok_unggahan" }, () => jadwal("pok"))
+      .subscribe();
+    let terakhir = Date.now();
+    const kembali = () => {
+      if (document.visibilityState !== "visible" || Date.now() - terakhir < 30_000) return;
+      terakhir = Date.now();
+      (Object.keys(segarkan) as (keyof typeof segarkan)[]).forEach(jadwal);
+    };
+    document.addEventListener("visibilitychange", kembali);
+    return () => {
+      document.removeEventListener("visibilitychange", kembali);
+      Object.values(tunda).forEach(clearTimeout);
+      sb.removeChannel(kanal);
+    };
+  }, [idSaya, segarkan]);
+
+  /* ---------- Sesi ---------- */
+  const penggunaAktif = profil ?? PROFIL_KOSONG;
+  const sudahMasuk = profil !== null;
+  const boleh = useCallback((izin: Izin) => izinSaya.has(izin), [izinSaya]);
+  const bolehBuka = (modul: Modul) => profil !== null && bolehModul(profil.peran, modul);
+  /** Penjaga tampilan: tampilkan pesan bila peran tidak berwenang (database tetap memeriksa ulang) */
   const wajib = (izin: Izin, aksi: string) => {
     if (boleh(izin)) return true;
     toast(`Peran ${penggunaAktif.peran} tidak berwenang ${aksi}`);
     return false;
   };
 
-  const namaUnit = useCallback(
-    (kode: string) => referensi.unit.find((u) => u.kode === kode)?.nama ?? kode,
-    [referensi.unit],
-  );
-  const namaAkun = useCallback(
-    (kode: string) => referensi.akun.find((a) => a.kode === kode)?.uraian ?? "-",
-    [referensi.akun],
-  );
+  const masuk: StoreValue["masuk"] = async (email, sandi) => {
+    const sb = supabase();
+    const { data, error } = await sb.auth.signInWithPassword({ email: email.trim().toLowerCase(), password: sandi });
+    if (error || !data.user) return { ok: false, pesan: pesanLogin(error ?? { message: "Gagal masuk" }) };
+    return mulaiSesi(data.user.id, true);
+  };
+
+  const keluar: StoreValue["keluar"] = async () => {
+    const sb = supabase();
+    try {
+      await sb.rpc("catat_aktivitas", { p_jenis: "Sesi", p_aksi: "keluar dari aplikasi" });
+    } catch {
+      /* tetap keluar walau log gagal */
+    }
+    await sb.auth.signOut();
+    bersihkan();
+  };
+
+  const gantiSandi: StoreValue["gantiSandi"] = async (lama, baru) => {
+    const sb = supabase();
+    const cek = await sb.auth.signInWithPassword({ email: penggunaAktif.email, password: lama });
+    if (cek.error) return { ok: false, pesan: /Invalid login/i.test(cek.error.message) ? "Kata sandi lama salah" : pesanLogin(cek.error) };
+    const { error } = await sb.auth.updateUser({ password: baru });
+    if (error) {
+      if (/different from the old/i.test(error.message)) return { ok: false, pesan: "Kata sandi baru harus berbeda dari kata sandi lama" };
+      if (/weak|at least|characters/i.test(error.message)) return { ok: false, pesan: "Kata sandi baru terlalu lemah (minimal 8 karakter, huruf dan angka)" };
+      return { ok: false, pesan: pesanGalat(error) };
+    }
+    return { ok: true };
+  };
+
+  /* ---------- Pembantu RPC ---------- */
+  const rpc = async <T,>(fn: string, args: Record<string, unknown>): Promise<T | null> => {
+    const { data, error } = await supabase().rpc(fn, args);
+    if (error) {
+      toast(pesanGalat(error));
+      return null;
+    }
+    return data as T;
+  };
+  const tambahLog = (baru?: Aktivitas[]) => {
+    if (!baru?.length) return;
+    setAktivitas((prev) => [...baru, ...prev.filter((a) => !baru.some((b) => b.id === a.id))]);
+  };
+  const pasangKegiatan = (k: Kegiatan) =>
+    setKegiatan((prev) => {
+      const i = prev.findIndex((x) => x.id === k.id);
+      if (i < 0) return [k, ...prev];
+      const salin = prev.slice();
+      salin[i] = k;
+      return salin;
+    });
+
+  /* ---------- Riwayat aktivitas ---------- */
+  const catatCetak: StoreValue["catatCetak"] = (k) => {
+    void rpc<Aktivitas>("catat_aktivitas", { p_jenis: "Cetak", p_aksi: "mencetak lembar pengajuan", p_objek_id: k.id, p_objek_label: k.uraian }).then(
+      (a) => a && tambahLog([a]),
+    );
+  };
+
+  const jejakDokumen: StoreValue["jejakDokumen"] = async (id) => (await rpc<Aktivitas[]>("jejak_dokumen", { p_objek_id: id })) ?? [];
+
+  const namaUnit = useCallback((kode: string) => referensi.unit.find((u) => u.kode === kode)?.nama ?? kode, [referensi.unit]);
+  const namaAkun = useCallback((kode: string) => referensi.akun.find((a) => a.kode === kode)?.uraian ?? "-", [referensi.akun]);
   const infoPengguna = useCallback(
     (id: string) => {
-      const u = pengguna.find((x) => x.id === id) ?? arsipPengguna[id];
+      const u = pengguna.find((x) => x.id === id);
       return u ? { nama: u.nama, peran: u.peran } : { nama: "Pengguna tidak dikenal", peran: "-" };
     },
-    [pengguna, arsipPengguna],
+    [pengguna],
   );
 
-  /* ---------- Log aktivitas ---------- */
-  const catatSebagai = (oleh: string, a: AktivitasBaru) => {
-    urutLog.current += 1;
-    const baris: Aktivitas = { ...a, id: `A${String(urutLog.current).padStart(5, "0")}`, waktu: sekarang(), oleh };
-    setAktivitas((prev) => [baris, ...prev]);
-  };
-  const catat: StoreValue["catat"] = (a) => catatSebagai(penggunaAktif.id, a);
-
-  /* ---------- Sesi ---------- */
-  const masuk: StoreValue["masuk"] = (email, sandi) => {
-    const u = pengguna.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
-    if (!u) return { ok: false, pesan: "Email tidak terdaftar di Belanjaku" };
-    if (!u.aktif) return { ok: false, pesan: "Akun ini nonaktif. Hubungi Administrator." };
-    if (sandi !== SANDI_DEMO) return { ok: false, pesan: "Kata sandi salah" };
-    setSesi(u.id);
-    try {
-      sessionStorage.setItem(KUNCI_SESI, u.id);
-    } catch {
-      /* abaikan */
-    }
-    catatSebagai(u.id, { jenis: "Sesi", modul: "Sistem", aksi: "masuk ke aplikasi", catatan: `Peran ${u.peran}` });
-    return { ok: true, nama: u.nama };
-  };
-
-  const keluar: StoreValue["keluar"] = () => {
-    if (sudahMasuk) catatSebagai(penggunaAktif.id, { jenis: "Sesi", modul: "Sistem", aksi: "keluar dari aplikasi" });
-    setSesi(null);
-    try {
-      sessionStorage.removeItem(KUNCI_SESI);
-    } catch {
-      /* abaikan */
-    }
-  };
-
-  const ubahKegiatan = (id: string, fn: (k: Kegiatan) => Kegiatan) =>
-    setKegiatan((prev) => prev.map((k) => (k.id === id ? fn(k) : k)));
-
   /* ---------- Belanja ---------- */
-  const nomorBerikut = () => {
-    // Nomor tidak pernah dipakai ulang, termasuk nomor dokumen yang sudah dihapus
-    const dariKegiatan = kegiatan.map((k) => Number(k.id.split("-").pop()) || 0);
-    const dariLog = aktivitas.filter((a) => a.objekId?.startsWith("BLJ-")).map((a) => Number(a.objekId!.split("-").pop()) || 0);
-    return `BLJ-2026-${String(Math.max(0, ...dariKegiatan, ...dariLog) + 1).padStart(4, "0")}`;
-  };
+  const isiPengajuan = (d: KegiatanBaru) => ({
+    uraian: d.uraian,
+    jenisDokumen: d.jenisDokumen,
+    noDokumen: d.noDokumen,
+    penyediaId: d.penyediaId,
+    unit: d.unit,
+    dana: d.dana,
+    mak: d.mak,
+    nilai: d.nilai,
+    tanggal: d.tanggal,
+  });
 
-  const tambahKegiatan: StoreValue["tambahKegiatan"] = (data) => {
+  const tambahKegiatan: StoreValue["tambahKegiatan"] = async (data) => {
     if (!wajib("belanja.buat", "membuat pengajuan")) return null;
-    const baru: Kegiatan = { ...data, id: nomorBerikut(), status: "Draf", dibuatOleh: penggunaAktif.id };
-    setKegiatan((prev) => [baru, ...prev]);
-    catat({
-      jenis: "Buat",
-      modul: "Belanja",
-      aksi: "membuat pengajuan",
-      objekId: baru.id,
-      objekLabel: baru.uraian,
-      catatan: `${baru.jenisDokumen} · ${rupiah(baru.nilai)} · MAK ${baru.mak}`,
-    });
-    return baru;
+    const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("buat_pengajuan", { p_data: isiPengajuan(data) });
+    if (!r) return null;
+    const k = rapikanKegiatan(r.pengajuan);
+    pasangKegiatan(k);
+    tambahLog(r.aktivitas);
+    return k;
   };
 
   const izinUbah: StoreValue["izinUbah"] = (k) => {
@@ -275,235 +428,208 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     return { boleh: true };
   };
 
-  /** Daftar kolom yang dibandingkan saat dokumen diubah, beserta cara menampilkannya */
-  const tampilKolom = (key: keyof KegiatanBaru, v: string | number): string => {
-    if (key === "nilai") return rupiah(Number(v));
-    if (key === "tanggal") return tanggal(String(v));
-    if (key === "unit") return namaUnit(String(v));
-    if (key === "akun") return `${v} ${namaAkun(String(v))}`;
-    return String(v);
-  };
-  const LABEL_KOLOM: Record<keyof KegiatanBaru, string> = {
-    uraian: "Uraian",
-    jenisDokumen: "Jenis dokumen",
-    noDokumen: "No. dokumen",
-    penyedia: "Penyedia",
-    unit: "Unit kerja",
-    dana: "Sumber dana",
-    mak: "MAK",
-    akun: "Akun",
-    nilai: "Nilai",
-    tanggal: "Tanggal dokumen",
-  };
-
-  const editKegiatan: StoreValue["editKegiatan"] = (id, data, catatan) => {
-    const lama = kegiatan.find((k) => k.id === id);
-    if (!lama || !izinUbah(lama).boleh) return { berubah: 0, kembaliKeDraf: false };
-    const perubahan: PerubahanKolom[] = (Object.keys(LABEL_KOLOM) as (keyof KegiatanBaru)[])
-      .filter((key) => String(lama[key]) !== String(data[key]))
-      .map((key) => ({ kolom: LABEL_KOLOM[key], dari: tampilKolom(key, lama[key]), ke: tampilKolom(key, data[key]) }));
-    if (perubahan.length === 0) return { berubah: 0, kembaliKeDraf: false };
-    const kembaliKeDraf = STATUS_PERLU_ULANG.includes(lama.status);
-    if (kembaliKeDraf) perubahan.push({ kolom: "Status", dari: lama.status, ke: "Draf" });
-    ubahKegiatan(id, (k) => ({ ...k, ...data, status: kembaliKeDraf ? "Draf" : k.status }));
-    catat({
-      jenis: "Ubah",
-      modul: "Belanja",
-      aksi: "mengubah pengajuan",
-      objekId: id,
-      objekLabel: data.uraian,
-      perubahan,
-      catatan: catatan?.trim() || undefined,
+  const editKegiatan: StoreValue["editKegiatan"] = async (id, data, catatan) => {
+    const r = await rpc<{ berubah: number; kembaliKeDraf: boolean; pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("ubah_pengajuan", {
+      p_id: id,
+      p_data: isiPengajuan(data),
+      p_catatan: catatan?.trim() || null,
     });
-    return { berubah: perubahan.length - (kembaliKeDraf ? 1 : 0), kembaliKeDraf };
+    if (!r) return null;
+    pasangKegiatan(rapikanKegiatan(r.pengajuan));
+    tambahLog(r.aktivitas);
+    return { berubah: r.berubah, kembaliKeDraf: r.kembaliKeDraf };
   };
 
-  const hapusKegiatan: StoreValue["hapusKegiatan"] = (id, alasan) => {
-    const k = kegiatan.find((x) => x.id === id);
-    if (!k || !izinUbah(k).boleh) return;
+  const hapusKegiatan: StoreValue["hapusKegiatan"] = async (id, alasan) => {
+    const r = await rpc<{ aktivitas: Aktivitas[] }>("hapus_pengajuan", { p_id: id, p_alasan: alasan.trim() });
+    if (!r) return false;
     setKegiatan((prev) => prev.filter((x) => x.id !== id));
-    // Simpan isi dokumen pada log agar tetap bisa ditelusuri setelah dihapus
-    catat({
-      jenis: "Hapus",
-      modul: "Belanja",
-      aksi: "menghapus pengajuan",
-      objekId: id,
-      objekLabel: k.uraian,
-      perubahan: [
-        { kolom: "No. dokumen", dari: `${k.jenisDokumen} ${k.noDokumen}`, ke: "dihapus" },
-        { kolom: "Penyedia", dari: k.penyedia, ke: "dihapus" },
-        { kolom: "MAK", dari: k.mak, ke: "dihapus" },
-        { kolom: "Akun", dari: `${k.akun} ${namaAkun(k.akun)}`, ke: "dihapus" },
-        { kolom: "Nilai", dari: rupiah(k.nilai), ke: "dihapus" },
-        { kolom: "Status", dari: k.status, ke: "dihapus" },
-      ],
-      catatan: alasan.trim(),
-    });
+    tambahLog(r.aktivitas);
+    return true;
   };
 
-  const ubahStatus: StoreValue["ubahStatus"] = (id, status) => {
-    const k = kegiatan.find((x) => x.id === id);
-    if (!k || k.status === status) return;
-    if (status === "Diajukan" || status === "Draf") {
-      if (!wajib("belanja.buat", "mengajukan pengajuan")) return;
-      if (k.dibuatOleh !== penggunaAktif.id) {
-        toast(`Hanya ${infoPengguna(k.dibuatOleh).nama} (pembuat dokumen) yang dapat mengajukan ${k.id}`);
-        return;
-      }
-    }
-    if (status === "Diverifikasi" && !wajib("belanja.verifikasi", "memverifikasi pengajuan")) return;
-    if ((status === "Disetujui" || status === "Ditolak") && !wajib("belanja.setujui", "menyetujui atau menolak pengajuan")) return;
-    ubahKegiatan(id, (x) => ({ ...x, status }));
-    catat({
-      jenis: "Status",
-      modul: "Belanja",
-      aksi: AKSI_STATUS[status],
-      objekId: id,
-      objekLabel: k.uraian,
-      perubahan: [{ kolom: "Status", dari: k.status, ke: status }],
-    });
+  const ubahStatus: StoreValue["ubahStatus"] = async (id, status) => {
+    const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("ubah_status_pengajuan", { p_id: id, p_status: status });
+    if (!r) return false;
+    pasangKegiatan(rapikanKegiatan(r.pengajuan));
+    tambahLog(r.aktivitas);
+    return true;
   };
 
   /* ---------- Pencairan ---------- */
-  const buatSpp: StoreValue["buatSpp"] = (id, jenis, tgl) => {
-    if (!wajib("pencairan.spp", "menerbitkan SPP")) return "";
-    const maks = kegiatan.reduce((m, k) => Math.max(m, k.spp ? parseInt(k.spp.no, 10) || 0 : 0), 0);
-    const no = `${String(maks + 1).padStart(5, "0")}/SPP-${jenis}/2026`;
-    const k = kegiatan.find((x) => x.id === id);
-    ubahKegiatan(id, (x) => ({ ...x, spp: { no, jenis, tahap: 1, tanggal: tgl } }));
-    catat({ jenis: "Pencairan", modul: "Pencairan", aksi: `membuat SPP-${jenis}`, objekId: id, objekLabel: k?.uraian, catatan: `No. ${no}` });
-    return no;
+  const buatSpp: StoreValue["buatSpp"] = async (id, jenis, tgl) => {
+    if (!wajib("pencairan.spp", "menerbitkan SPP")) return null;
+    const r = await rpc<{ nomor: string; pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("buat_spp", { p_pengajuan_id: id, p_jenis: jenis, p_tanggal: tgl });
+    if (!r) return null;
+    pasangKegiatan(rapikanKegiatan(r.pengajuan));
+    tambahLog(r.aktivitas);
+    return r.nomor;
   };
 
-  const majukanTahap: StoreValue["majukanTahap"] = (id) => {
-    const k = kegiatan.find((x) => x.id === id);
-    if (!k?.spp || k.spp.tahap >= 4) return undefined;
-    const t = (k.spp.tahap + 1) as 2 | 3 | 4;
-    if (!wajib(TAHAP_PENCAIRAN[t].izin, `memproses tahap ${NAMA_TAHAP[t]}`)) return undefined;
-    const next: Kegiatan = { ...k, spp: { ...k.spp, tahap: t } };
-    ubahKegiatan(id, () => next);
-    catat({
-      jenis: "Pencairan",
-      modul: "Pencairan",
-      aksi: AKSI_TAHAP[t].aksi,
-      objekId: id,
-      objekLabel: k.uraian,
-      perubahan: [{ kolom: "Tahap", dari: NAMA_TAHAP[t - 1], ke: NAMA_TAHAP[t] }],
-      catatan: k.spp.no,
-    });
-    return next;
+  const majukanTahap: StoreValue["majukanTahap"] = async (id) => {
+    const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("majukan_tahap_spp", { p_pengajuan_id: id });
+    if (!r) return null;
+    const k = rapikanKegiatan(r.pengajuan);
+    pasangKegiatan(k);
+    tambahLog(r.aktivitas);
+    return k;
   };
 
   /* ---------- Pengesahan ---------- */
-  const sahkan: StoreValue["sahkan"] = (ids) => {
-    if (!wajib("pengesahan.sahkan", "mengesahkan belanja")) return;
-    const tgl = hariIni();
-    setKegiatan((prev) =>
-      prev.map((k) => (ids.includes(k.id) ? { ...k, disahkan: { nomor: PERIODE_BERJALAN.nomor, tanggal: tgl } } : k)),
-    );
-    kegiatan
-      .filter((k) => ids.includes(k.id))
-      .forEach((k) =>
-        catat({
-          jenis: "Pengesahan",
-          modul: "Pengesahan",
-          aksi: `mengesahkan pada ${PERIODE_BERJALAN.nomor}`,
-          objekId: k.id,
-          objekLabel: k.uraian,
-          catatan: rupiah(k.nilai),
-        }),
-      );
+  const sahkan: StoreValue["sahkan"] = async (ids) => {
+    if (!wajib("pengesahan.sahkan", "mengesahkan belanja")) return null;
+    const r = await rpc<{ nomor: string; pengajuan: Kegiatan[]; aktivitas: Aktivitas[] }>("sahkan_pengajuan", { p_ids: ids });
+    if (!r) return null;
+    r.pengajuan.forEach((k) => pasangKegiatan(rapikanKegiatan(k)));
+    tambahLog(r.aktivitas);
+    segarkan.sp3b().catch(() => {});
+    return r.nomor;
   };
 
-  /* ---------- Pengguna ---------- */
-  const tambahPengguna: StoreValue["tambahPengguna"] = (p) => {
-    if (!wajib("pengguna.kelola", "mengelola pengguna")) return;
-    const id = `u${Date.now()}`;
-    setPengguna((prev) => [...prev, { ...p, id, aktif: true }]);
-    catat({ jenis: "Pengguna", modul: "Pengguna", aksi: "menambah pengguna", objekId: id, objekLabel: p.nama, catatan: `${p.peran} · ${p.email}` });
-  };
-
-  const ubahPengguna: StoreValue["ubahPengguna"] = (id, data) => {
-    if (!wajib("pengguna.kelola", "mengelola pengguna")) return;
-    const lama = pengguna.find((u) => u.id === id);
-    if (!lama) return;
-    const kolom: [string, string, string][] = [
-      ["Nama", lama.nama, data.nama],
-      ["Email", lama.email, data.email],
-      ["Peran", lama.peran, data.peran],
-      ["Unit kerja", namaUnit(lama.unit), namaUnit(data.unit)],
-      ["Status", lama.aktif ? "Aktif" : "Nonaktif", data.aktif ? "Aktif" : "Nonaktif"],
-    ];
-    const perubahan = kolom.filter(([, a, b]) => a !== b).map(([k, a, b]) => ({ kolom: k, dari: a, ke: b }));
-    setPengguna((prev) => prev.map((u) => (u.id === id ? { ...data, id } : u)));
-    if (perubahan.length)
-      catat({ jenis: "Pengguna", modul: "Pengguna", aksi: "mengubah data pengguna", objekId: id, objekLabel: data.nama, perubahan });
-  };
-
-  const toggleAktifPengguna: StoreValue["toggleAktifPengguna"] = (id) => {
-    if (!wajib("pengguna.kelola", "mengelola pengguna")) return;
-    const u = pengguna.find((x) => x.id === id);
-    if (!u) return;
-    setPengguna((prev) => prev.map((x) => (x.id === id ? { ...x, aktif: !x.aktif } : x)));
-    catat({
-      jenis: "Pengguna",
-      modul: "Pengguna",
-      aksi: u.aktif ? "menonaktifkan pengguna" : "mengaktifkan pengguna",
-      objekId: id,
-      objekLabel: u.nama,
-      perubahan: [{ kolom: "Status", dari: u.aktif ? "Aktif" : "Nonaktif", ke: u.aktif ? "Nonaktif" : "Aktif" }],
-    });
-  };
-
-  const hapusPengguna: StoreValue["hapusPengguna"] = (id) => {
-    if (!wajib("pengguna.kelola", "mengelola pengguna")) return;
-    const u = pengguna.find((x) => x.id === id);
-    if (!u) return;
-    setArsipPengguna((a) => ({ ...a, [id]: u }));
-    setPengguna((prev) => prev.filter((x) => x.id !== id));
-    catat({ jenis: "Pengguna", modul: "Pengguna", aksi: "menghapus pengguna", objekId: id, objekLabel: u.nama, catatan: `${u.peran} · ${u.email}` });
-  };
-
-  /* ---------- Kertas Kerja POK ---------- */
-  const daftarMak = useMemo(() => susunDaftarMak(dataPok), [dataPok]);
-  const petaMak = useMemo(() => new Map(daftarMak.map((m) => [m.kode, m])), [daftarMak]);
-  const barisPok = useMemo(() => susunBarisPok(dataPok, daftarMak), [dataPok, daftarMak]);
-  const cariMak = useCallback((kode: string) => petaMak.get(kode), [petaMak]);
-
-  const terapkanPok: StoreValue["terapkanPok"] = (data) => {
-    if (!wajib("pok.unggah", "mengunggah FA Detail")) return false;
-    const baru: DataPok = { ...data, sumber: { ...data.sumber, diunggah: sekarang(), oleh: penggunaAktif.nama } };
-    setDataPok(baru);
-    try {
-      localStorage.setItem(KUNCI_POK, JSON.stringify(baru));
-    } catch {
-      toast("Data dipakai, tetapi tidak dapat disimpan di browser ini (penyimpanan penuh/diblokir)");
+  /** Rekap SP3B per bulan dari dokumen BLU (+ saldo awal di tabel sp3b), tanpa bulan berjalan */
+  const pengesahan = useMemo<Sp3bBlu[]>(() => {
+    const kini = periodeBerjalan().bulan;
+    const peta = new Map<string, Sp3bBlu>();
+    const ambil = (bulan: string) => {
+      if (!peta.has(bulan)) {
+        const [th, mm] = bulan.split("-");
+        peta.set(bulan, { nomor: `SP3B-BLU-${mm}/${th}`, periode: `${NAMA_BULAN[Number(mm) - 1]} ${th}`, bulan, pencairan: 0, pengesahan: 0 });
+      }
+      return peta.get(bulan)!;
+    };
+    for (const s of sp3b) {
+      const x = ambil(s.bulan.slice(0, 7));
+      x.nomor = s.nomor;
+      x.periode = s.periode;
+      x.pencairan += s.pencairan_awal;
+      x.pengesahan += s.pengesahan_awal;
     }
-    // Akun baru dari FA Detail ikut ditambahkan ke daftar akun referensi
-    setRef((r) => {
-      const ada = new Set(r.akun.map((a) => a.kode));
-      const tambah = Object.entries(baru.akun)
-        .filter(([k]) => !ada.has(k))
-        .map(([kode, uraian]) => ({ kode, uraian, jenis: labelJenisAkun(kode) }));
-      return tambah.length ? { ...r, akun: [...r.akun, ...tambah] } : r;
-    });
-    const jumlahItem = Object.values(baru.item).reduce((n, x) => n + x.length, 0);
-    const pagu = baru.mak.reduce((a, m) => a + m[1], 0);
-    const realisasi = baru.mak.reduce((a, m) => a + m[3], 0);
-    catat({
-      jenis: "Referensi",
-      modul: "Referensi",
-      aksi: "mengunggah FA Detail (Kertas Kerja POK)",
-      objekLabel: baru.sumber.file,
-      catatan: `Periode ${baru.sumber.periode || "-"} · ${desimal(baru.mak.length, 0)} MAK${jumlahItem ? ` · ${desimal(jumlahItem, 0)} item` : ""} · pagu ${rupiah(pagu)} · realisasi ${rupiah(realisasi)}`,
-    });
+    for (const k of kegiatan) {
+      if (k.dana !== "BLU" || !k.spp) continue;
+      if (k.spp.tahap === 4) ambil(k.spp.tanggal.slice(0, 7)).pencairan += k.nilai;
+      if (k.disahkan) ambil(bulanSp3b(k.disahkan.nomor)).pengesahan += k.nilai;
+    }
+    return [...peta.values()].filter((x) => x.bulan !== kini && x.bulan).sort((a, b) => b.bulan.localeCompare(a.bulan));
+  }, [kegiatan, sp3b]);
+
+  /* ---------- Pengguna (API server: butuh kunci rahasia Supabase) ---------- */
+  const api = async <T,>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<T | null> => {
+    const { data } = await supabase().auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      toast("Sesi berakhir. Silakan masuk kembali.");
+      return null;
+    }
+    try {
+      const res = await fetch(path, {
+        method,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const json = (await res.json().catch(() => ({}))) as T & { pesan?: string };
+      if (!res.ok) {
+        toast(json.pesan ?? `Permintaan gagal (${res.status})`);
+        return null;
+      }
+      return json;
+    } catch (e) {
+      toast(pesanGalat(e as Error));
+      return null;
+    }
+  };
+  const pasangPengguna = (u: Pengguna) =>
+    setPengguna((prev) => (prev.some((x) => x.id === u.id) ? prev.map((x) => (x.id === u.id ? u : x)) : [...prev, u]));
+
+  const tambahPengguna: StoreValue["tambahPengguna"] = async (p) => {
+    if (!wajib("pengguna.kelola", "mengelola pengguna")) return false;
+    const r = await api<{ pengguna: Pengguna; aktivitas: Aktivitas[] }>("/api/pengguna", "POST", p);
+    if (!r) return false;
+    pasangPengguna(r.pengguna);
+    tambahLog(r.aktivitas);
+    return true;
+  };
+
+  const ubahPengguna: StoreValue["ubahPengguna"] = async (id, data) => {
+    if (!wajib("pengguna.kelola", "mengelola pengguna")) return false;
+    const r = await api<{ pengguna: Pengguna; aktivitas: Aktivitas[] }>(`/api/pengguna/${id}`, "PATCH", data);
+    if (!r) return false;
+    pasangPengguna(r.pengguna);
+    tambahLog(r.aktivitas);
+    return true;
+  };
+
+  const toggleAktifPengguna: StoreValue["toggleAktifPengguna"] = async (id) => {
+    const u = pengguna.find((x) => x.id === id);
+    if (!u) return false;
+    return ubahPengguna(id, { nama: u.nama, email: u.email, peran: u.peran, unit: u.unit, aktif: !u.aktif });
+  };
+
+  const hapusPengguna: StoreValue["hapusPengguna"] = async (id) => {
+    if (!wajib("pengguna.kelola", "mengelola pengguna")) return false;
+    const r = await api<{ aktivitas: Aktivitas[] }>(`/api/pengguna/${id}`, "DELETE");
+    if (!r) return false;
+    setPengguna((prev) => prev.map((x) => (x.id === id ? { ...x, aktif: false, dihapus: true } : x)));
+    tambahLog(r.aktivitas);
+    return true;
+  };
+
+  const aturUlangSandi: StoreValue["aturUlangSandi"] = async (id, sandi) => {
+    if (!wajib("pengguna.kelola", "mengelola pengguna")) return false;
+    const r = await api<{ aktivitas: Aktivitas[] }>(`/api/pengguna/${id}/sandi`, "POST", { sandi });
+    if (!r) return false;
+    tambahLog(r.aktivitas);
     return true;
   };
 
   /* ---------- Referensi ---------- */
-  const setReferensi: StoreValue["setReferensi"] = (fn) => {
-    if (!wajib("referensi.kelola", "mengubah referensi")) return;
-    setRef((r) => fn(r));
+  const simpanReferensi: StoreValue["simpanReferensi"] = async (jenis, data, kode) => {
+    if (!wajib("referensi.kelola", "mengubah referensi")) return false;
+    const r = await rpc<{ berubah: number; aktivitas: Aktivitas[] }>("simpan_referensi", { p_jenis: jenis, p_data: data, p_kode: kode ?? null });
+    if (!r) return false;
+    tambahLog(r.aktivitas);
+    await segarkan.referensi().catch((e) => toast(pesanGalat(e)));
+    if (jenis === "penyedia" && kode) segarkan.kegiatan().catch(() => {});
+    return true;
+  };
+
+  /* ---------- Kertas Kerja POK ---------- */
+  const daftarMak = useMemo(() => (dataPok ? susunDaftarMak(dataPok) : []), [dataPok]);
+  const petaMak = useMemo(() => new Map(daftarMak.map((m) => [m.kode, m])), [daftarMak]);
+  const barisPok = useMemo(() => (dataPok ? susunBarisPok(dataPok, daftarMak) : []), [dataPok, daftarMak]);
+  const cariMak = useCallback((kode: string) => petaMak.get(kode), [petaMak]);
+
+  const terapkanPok: StoreValue["terapkanPok"] = async (data, file) => {
+    if (!wajib("pok.unggah", "mengunggah FA Detail")) return false;
+    const sb = supabase();
+    // File asli disimpan di Storage (bucket privat "fa-detail") sebagai arsip
+    let path: string | null = null;
+    let arsipGagal = false;
+    if (file) {
+      const tahun = data.sumber.periode.match(/(\d{4})\s*$/)?.[1] ?? String(new Date().getFullYear());
+      const cap = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      path = `${tahun}/${cap}-${Math.random().toString(36).slice(2, 8)}.xlsx`;
+      const up = await sb.storage.from("fa-detail").upload(path, file, {
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        upsert: false,
+      });
+      if (up.error) {
+        path = null;
+        arsipGagal = true;
+      }
+    }
+    const r = await rpc<{ unggahan: number; aktivitas: Aktivitas[] }>("terapkan_pok", {
+      p_data: { sumber: { file: data.sumber.file, periode: data.sumber.periode, satker: data.sumber.satker }, uraian: data.uraian, akun: data.akun, mak: data.mak, item: data.item },
+      p_file_nama: data.sumber.file,
+      p_file_path: path,
+    });
+    if (!r) {
+      if (path) await sb.storage.from("fa-detail").remove([path]);
+      return false;
+    }
+    tambahLog(r.aktivitas);
+    await Promise.allSettled([segarkan.pok(), segarkan.referensi()]);
+    if (arsipGagal) toast("Data FA Detail tersimpan, tetapi file aslinya gagal diarsipkan di Storage");
+    return true;
   };
 
   const value: StoreValue = {
@@ -513,13 +639,18 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     referensi,
     aktivitas,
     siap,
+    terkonfigurasi: supabaseTerkonfigurasi,
     sudahMasuk,
+    memuat,
     penggunaAktif,
     masuk,
     keluar,
+    gantiSandi,
     boleh,
     bolehBuka,
-    catat,
+    muatUlang: muatSemua,
+    catatCetak,
+    jejakDokumen,
     tambahKegiatan,
     editKegiatan,
     hapusKegiatan,
@@ -532,7 +663,8 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     ubahPengguna,
     toggleAktifPengguna,
     hapusPengguna,
-    setReferensi,
+    aturUlangSandi,
+    simpanReferensi,
     dataPok,
     daftarMak,
     barisPok,

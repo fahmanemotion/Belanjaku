@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import GantiSandi from "./GantiSandi";
 import Icon, { type IconName } from "./Icon";
 import Login from "./Login";
 import Logo, { Wordmark } from "./Logo";
@@ -45,7 +46,7 @@ function useTheme(): [Theme, (t: "light" | "dark") => void] {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { siap, sudahMasuk, bolehBuka, penggunaAktif, keluar, toast } = useStore();
+  const { siap, terkonfigurasi, sudahMasuk, memuat, bolehBuka, penggunaAktif, keluar, toast } = useStore();
   const [theme, setTheme] = useTheme();
   const [scrolled, setScrolled] = useState(false);
 
@@ -58,10 +59,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   // Sesi belum terbaca → layar pembuka singkat; belum masuk → halaman login
-  if (!siap) {
+  if (!terkonfigurasi) return <BelumTerkonfigurasi />;
+  if (!siap || (sudahMasuk && memuat)) {
     return (
       <div className="pembuka" aria-busy="true" aria-label="Memuat Belanjaku">
         <Logo size={52} />
+        {sudahMasuk && <span className="pembuka-teks">Memuat data…</span>}
       </div>
     );
   }
@@ -73,8 +76,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const modulHalaman = modulDariPath(pathname);
   const ditolak = modulHalaman !== null && !bolehBuka(modulHalaman);
 
-  const keluarAplikasi = () => {
-    keluar();
+  const keluarAplikasi = async () => {
+    await keluar();
     toast("Anda sudah keluar");
   };
 
@@ -183,6 +186,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 function MenuAkun({ onKeluar }: { onKeluar: () => void }) {
   const { penggunaAktif, namaUnit } = useStore();
   const [buka, setBuka] = useState(false);
+  const [gantiSandi, setGantiSandi] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -225,13 +229,25 @@ function MenuAkun({ onKeluar }: { onKeluar: () => void }) {
           <dl className="menu-info">
             <div>
               <dt>Unit</dt>
-              <dd>{namaUnit(penggunaAktif.unit)}</dd>
+              <dd>{penggunaAktif.unit ? namaUnit(penggunaAktif.unit) : "-"}</dd>
             </div>
             <div>
               <dt>Tugas</dt>
               <dd>{AKSES[penggunaAktif.peran]?.tugas}</dd>
             </div>
           </dl>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-sandi"
+            onClick={() => {
+              setBuka(false);
+              setGantiSandi(true);
+            }}
+          >
+            <Icon name="lock" />
+            Ganti kata sandi
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -246,6 +262,21 @@ function MenuAkun({ onKeluar }: { onKeluar: () => void }) {
           </button>
         </div>
       )}
+      {gantiSandi && <GantiSandi onClose={() => setGantiSandi(false)} />}
+    </div>
+  );
+}
+
+/** Ditampilkan bila variabel lingkungan Supabase belum diisi (.env.local / Vercel) */
+function BelumTerkonfigurasi() {
+  return (
+    <div className="pembuka pembuka-galat" role="alert">
+      <Logo size={52} />
+      <h1>Belanjaku belum tersambung ke database</h1>
+      <p>
+        Isi <code>NEXT_PUBLIC_SUPABASE_URL</code> dan <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> di file <code>.env.local</code> (komputer)
+        atau di <b>Environment Variables</b> Vercel, lalu jalankan ulang / deploy ulang aplikasi.
+      </p>
     </div>
   );
 }

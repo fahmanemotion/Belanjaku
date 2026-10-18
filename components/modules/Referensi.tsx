@@ -2,11 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import Icon from "@/components/Icon";
-import { useStore } from "@/components/StoreProvider";
+import { useStore, type JenisReferensi } from "@/components/StoreProvider";
 import { Badge, EmptyRow, Field, Modal, PageHead, SearchBox, Status, Tabs } from "@/components/ui";
-import type { Referensi as Ref } from "@/lib/types";
+import { labelJenisAkun } from "@/lib/data";
+import type { RefAkun, RefDana, RefPenyedia, RefUnit } from "@/lib/types";
 
-type Jenis = keyof Ref;
+type Jenis = JenisReferensi;
+type Baris = RefAkun | RefUnit | RefPenyedia | RefDana;
 
 const TAB: { value: Jenis; label: string }[] = [
   { value: "akun", label: "Akun Belanja" },
@@ -22,23 +24,24 @@ const KOLOM: Record<Jenis, string[]> = {
   dana: ["Kode", "Sumber Dana", "Warna"],
 };
 
-const FORM: Record<Jenis, string[]> = {
-  akun: ["Kode akun", "Uraian", "Jenis belanja"],
-  unit: ["Kode unit", "Nama unit kerja", "Penanggung jawab"],
-  penyedia: ["Nama penyedia", "Bidang usaha", "Kota"],
-  dana: ["Kode", "Nama sumber dana", "Warna (hex, mis. #3a6fd9)"],
-};
-
 export default function Referensi() {
   const { referensi, boleh } = useStore();
-  // Hanya Administrator yang menambah data referensi; peran lain melihat saja
+  // Hanya Administrator yang menambah/mengubah data referensi; peran lain melihat saja
   const bisaKelola = boleh("referensi.kelola");
   const [tab, setTab] = useState<Jenis>("akun");
   const [cari, setCari] = useState("");
-  const [tambah, setTambah] = useState(false);
+  const [form, setForm] = useState<{ jenis: Jenis; awal?: Baris } | null>(null);
 
   const q = cari.toLowerCase();
   const cocok = (vals: (string | boolean)[]) => vals.join(" ").toLowerCase().includes(q);
+  const ubah = (awal: Baris, label: string) =>
+    bisaKelola ? (
+      <td className="sel-aksi-ref">
+        <button type="button" className="ib-aksi" aria-label={`Ubah ${label}`} title={`Ubah ${label}`} onClick={() => setForm({ jenis: tab, awal })}>
+          <Icon name="edit" />
+        </button>
+      </td>
+    ) : null;
 
   let rows: ReactNode[] = [];
   if (tab === "akun")
@@ -47,6 +50,7 @@ export default function Referensi() {
         <td className="mono" data-label="Kode Akun">{r.kode}</td>
         <td className="main"><b>{r.uraian}</b></td>
         <td data-label="Jenis Belanja"><Badge tone={r.jenis.startsWith("Modal") ? "i" : r.jenis.startsWith("Pegawai") ? "w" : ""}>{r.jenis}</Badge></td>
+        {ubah(r, r.kode)}
       </tr>
     ));
   if (tab === "unit")
@@ -54,16 +58,18 @@ export default function Referensi() {
       <tr key={r.kode}>
         <td className="mono" data-label="Kode">{r.kode}</td>
         <td className="main"><b>{r.nama}</b></td>
-        <td data-label="Penanggung Jawab">{r.penanggungJawab}</td>
+        <td data-label="Penanggung Jawab">{r.penanggungJawab || "-"}</td>
+        {ubah(r, r.nama)}
       </tr>
     ));
   if (tab === "penyedia")
     rows = referensi.penyedia.filter((r) => cocok([r.nama, r.bidang, r.kota])).map((r) => (
-      <tr key={r.nama}>
+      <tr key={r.id}>
         <td className="main"><b>{r.nama}</b></td>
-        <td data-label="Bidang">{r.bidang}</td>
-        <td data-label="Kota">{r.kota}</td>
+        <td data-label="Bidang">{r.bidang || "-"}</td>
+        <td data-label="Kota">{r.kota || "-"}</td>
         <td data-label="Status"><Status tone={r.aktif ? "g" : "m"}>{r.aktif ? "Aktif" : "Tidak aktif"}</Status></td>
+        {ubah(r, r.nama)}
       </tr>
     ));
   if (tab === "dana")
@@ -77,8 +83,11 @@ export default function Referensi() {
             <span className="mono">{r.warna}</span>
           </span>
         </td>
+        {ubah(r, r.nama)}
       </tr>
     ));
+
+  const kolom = KOLOM[tab].length + (bisaKelola ? 1 : 0);
 
   return (
     <>
@@ -93,7 +102,7 @@ export default function Referensi() {
           <div className="tbar">
             <SearchBox id="ref-cari" value={cari} onChange={setCari} placeholder="Cari referensi" />
             {bisaKelola && (
-              <button type="button" className="btn dark sm" onClick={() => setTambah(true)}>
+              <button type="button" className="btn dark sm" onClick={() => setForm({ jenis: tab })}>
                 <Icon name="plus" />
                 Tambah
               </button>
@@ -103,71 +112,105 @@ export default function Referensi() {
         <div className="tw stack">
           <table className="narrow">
             <thead>
-              <tr>{KOLOM[tab].map((k) => <th key={k}>{k}</th>)}</tr>
+              <tr>
+                {KOLOM[tab].map((k) => <th key={k}>{k}</th>)}
+                {bisaKelola && <th className="r">Aksi</th>}
+              </tr>
             </thead>
             <tbody>
-              {rows.length ? rows : <EmptyRow cols={KOLOM[tab].length}>Tidak ada data yang cocok.</EmptyRow>}
+              {rows.length ? rows : <EmptyRow cols={kolom}>Tidak ada data yang cocok.</EmptyRow>}
             </tbody>
           </table>
         </div>
       </section>
 
-      {tambah && <FormReferensi jenis={tab} onClose={() => setTambah(false)} />}
+      {form && <FormReferensi jenis={form.jenis} awal={form.awal} onClose={() => setForm(null)} />}
     </>
   );
 }
 
-function FormReferensi({ jenis, onClose }: { jenis: Jenis; onClose: () => void }) {
-  const { setReferensi, catat, toast } = useStore();
-  const label = FORM[jenis];
-  const [nilai, setNilai] = useState<string[]>(label.map(() => ""));
+/** Isian form per jenis referensi; kunci = nama kolom yang dikirim ke database */
+const ISIAN: Record<Jenis, { kunci: string; label: string; contoh?: string; kode?: boolean }[]> = {
+  akun: [
+    { kunci: "kode", label: "Kode akun (6 digit)", contoh: "521211", kode: true },
+    { kunci: "uraian", label: "Uraian", contoh: "Belanja Bahan" },
+  ],
+  unit: [
+    { kunci: "kode", label: "Kode unit", contoh: "UK09", kode: true },
+    { kunci: "nama", label: "Nama unit kerja" },
+    { kunci: "penanggungJawab", label: "Penanggung jawab", contoh: "Kepala Unit" },
+  ],
+  penyedia: [
+    { kunci: "nama", label: "Nama penyedia", contoh: "CV …" },
+    { kunci: "bidang", label: "Bidang usaha" },
+    { kunci: "kota", label: "Kota" },
+  ],
+  dana: [
+    { kunci: "kode", label: "Kode", contoh: "PNBP", kode: true },
+    { kunci: "nama", label: "Nama sumber dana" },
+    { kunci: "warna", label: "Warna (hex, mis. #3a6fd9)", contoh: "#3a6fd9" },
+  ],
+};
 
-  const simpan = () => {
-    const v = nilai.map((x) => x.trim());
-    if (v.some((x) => !x)) {
-      toast("Semua kolom wajib diisi");
+function nilaiAwal(jenis: Jenis, awal?: Baris): Record<string, string> {
+  if (!awal) return Object.fromEntries(ISIAN[jenis].map((f) => [f.kunci, ""]));
+  return Object.fromEntries(ISIAN[jenis].map((f) => [f.kunci, String((awal as unknown as Record<string, unknown>)[f.kunci] ?? "")]));
+}
+
+function FormReferensi({ jenis, awal, onClose }: { jenis: Jenis; awal?: Baris; onClose: () => void }) {
+  const { simpanReferensi, toast } = useStore();
+  const isian = ISIAN[jenis];
+  const [nilai, setNilai] = useState<Record<string, string>>(() => nilaiAwal(jenis, awal));
+  const [aktif, setAktif] = useState(jenis === "penyedia" && awal ? (awal as RefPenyedia).aktif : true);
+  const label = TAB.find((t) => t.value === jenis)?.label ?? "";
+  // kode akun → jenis belanja & sumber dana langsung terlihat
+  const infoAkun = jenis === "akun" && /^\d{6}$/.test(nilai.kode ?? "") ? labelJenisAkun(nilai.kode) : null;
+
+  const simpan = async () => {
+    const v = Object.fromEntries(Object.entries(nilai).map(([k, x]) => [k, x.trim()]));
+    const wajib = isian.filter((f) => f.kunci !== "penanggungJawab" && f.kunci !== "bidang" && f.kunci !== "kota");
+    if (wajib.some((f) => !v[f.kunci])) {
+      toast(`Lengkapi ${wajib.filter((f) => !v[f.kunci]).map((f) => f.label.toLowerCase()).join(", ")}`);
       return;
     }
-    setReferensi((r) => {
-      switch (jenis) {
-        case "akun":
-          return { ...r, akun: [...r.akun, { kode: v[0], uraian: v[1], jenis: v[2] }] };
-        case "unit":
-          return { ...r, unit: [...r.unit, { kode: v[0], nama: v[1], penanggungJawab: v[2] }] };
-        case "penyedia":
-          return { ...r, penyedia: [...r.penyedia, { nama: v[0], bidang: v[1], kota: v[2], aktif: true }] };
-        case "dana":
-          return { ...r, dana: [...r.dana, { kode: v[0], nama: v[1], warna: v[2] }] };
-      }
-    });
-    catat({
-      jenis: "Referensi",
-      modul: "Referensi",
-      aksi: `menambah ${TAB.find((t) => t.value === jenis)?.label.toLowerCase()}`,
-      objekId: v[0],
-      objekLabel: v[1],
-    });
-    toast("Referensi tersimpan");
+    if (jenis === "akun" && !/^\d{6}$/.test(v.kode)) return toast("Kode akun harus 6 digit angka");
+    if (jenis === "dana" && !/^#[0-9a-fA-F]{6}$/.test(v.warna)) return toast("Warna harus format hex #RRGGBB");
+    const data: Record<string, string | boolean> = jenis === "penyedia" ? { ...v, aktif } : v;
+    const kunci = awal ? (jenis === "penyedia" ? (awal as RefPenyedia).id : v.kode) : undefined;
+    if (!(await simpanReferensi(jenis, data, kunci))) return;
+    toast(awal ? "Perubahan referensi tersimpan" : "Referensi tersimpan");
     onClose();
   };
 
   return (
     <Modal
-      title={`Tambah ${TAB.find((t) => t.value === jenis)?.label}`}
-      description="Data baru langsung tersedia di formulir pengajuan."
-      submitLabel="Simpan"
+      title={`${awal ? "Ubah" : "Tambah"} ${label}`}
+      description={awal ? "Perubahan langsung dipakai di seluruh modul dan tercatat di Riwayat Aktivitas." : "Data baru langsung tersedia di formulir pengajuan."}
+      submitLabel={awal ? "Simpan Perubahan" : "Simpan"}
       onSubmit={simpan}
       onClose={onClose}
     >
-      {label.map((l, i) => (
-        <Field key={l} label={l} full={i === 1}>
+      {isian.map((f, i) => (
+        <Field key={f.kunci} label={f.label} full={i === 1 || isian.length === 2}>
           <input
-            value={nilai[i]}
-            onChange={(e) => setNilai((n) => n.map((x, j) => (j === i ? e.target.value : x)))}
-            required
+            value={nilai[f.kunci] ?? ""}
+            onChange={(e) => setNilai((n) => ({ ...n, [f.kunci]: f.kode ? e.target.value.toUpperCase() : e.target.value }))}
+            placeholder={f.contoh}
+            disabled={Boolean(awal && f.kode)}
+            title={awal && f.kode ? "Kode tidak dapat diubah" : undefined}
+            className={f.kode ? "mono" : undefined}
           />
         </Field>
       ))}
+      {infoAkun && <p className="hint">Jenis belanja & sumber dana: <b>{infoAkun}</b> (ditentukan dari kode akun)</p>}
+      {jenis === "penyedia" && awal && (
+        <Field label="Status" full>
+          <select value={aktif ? "aktif" : "nonaktif"} onChange={(e) => setAktif(e.target.value === "aktif")}>
+            <option value="aktif">Aktif — muncul di formulir pengajuan</option>
+            <option value="nonaktif">Tidak aktif — disembunyikan dari formulir</option>
+          </select>
+        </Field>
+      )}
     </Modal>
   );
 }

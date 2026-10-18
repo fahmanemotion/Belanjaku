@@ -9,6 +9,7 @@ import { BadgeDana, EmptyRow, PageHead, Paginasi, Saring, SearchBox, useHalaman 
 import {
   BULAN_12,
   BULAN_BERJALAN,
+  CONTOH_PENGESAHAN_BLU,
   FILTER_DANA,
   JENIS_BELANJA,
   KARTU_TARGET,
@@ -32,8 +33,8 @@ import {
 } from "@/lib/data";
 import type { JenisDokumen } from "@/lib/types";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
-import { desimal, rupiah, rupiahSingkat, tanggal, tanggalJam } from "@/lib/format";
-import type { BarisPok } from "@/lib/mak";
+import { desimal, rupiah, rupiahSingkat, tanggalJam } from "@/lib/format";
+import type { BarisPok, DataPok, InfoMak } from "@/lib/mak";
 
 const LABEL_FILTER: Record<FilterDana, string> = { Gabung: "RM + BLU", RM: "Rupiah Murni", BLU: "PNBP BLU" };
 
@@ -49,12 +50,15 @@ function sapaan(jam: number) {
 }
 
 /** Pagu & realisasi per jenis belanja untuk filter terpilih */
-function hitungJenis(filter: FilterDana) {
+/** Pagu, lock, realisasi, dan sisa per jenis belanja dari Kertas Kerja POK (FA Detail SAKTI) */
+function hitungJenis(daftar: InfoMak[], filter: FilterDana) {
   const sumber = danaDari(filter);
   return JENIS_BELANJA.map((j) => {
-    const pagu = jumlah(sumber.map((d) => PAGU_JENIS[d][j.kode as JenisBelanja].pagu));
-    const realisasi = jumlah(sumber.map((d) => PAGU_JENIS[d][j.kode as JenisBelanja].realisasi));
-    return { ...j, pagu, realisasi, sisa: pagu - realisasi };
+    const mak = daftar.filter((m) => sumber.includes(m.dana) && jenisBelanjaDariAkun(m.akun) === j.kode);
+    const pagu = jumlah(mak.map((m) => m.pagu));
+    const lock = jumlah(mak.map((m) => m.lock));
+    const realisasi = jumlah(mak.map((m) => m.realisasi));
+    return { ...j, pagu, lock, realisasi, sisa: pagu - lock - realisasi };
   });
 }
 
@@ -116,7 +120,10 @@ function KartuDana({
           <h3>Belanja {dana}</h3>
           <p className="sub">{info.nama} · pagu {rupiahSingkat(pagu)}</p>
         </div>
-        <BadgeDana dana={dana} />
+        <span className="kepala-kanan">
+          <span className="chip-ex kecil" title="Kartu ini masih memakai data contoh">Data contoh</span>
+          <BadgeDana dana={dana} />
+        </span>
       </div>
       <div className="tiles">
         <Tile
@@ -239,7 +246,9 @@ function PanelGrafik({ filter }: { filter: FilterDana }) {
     <section className="panel c-chart span2">
       <div className="ph chart-head">
         <div>
-          <h3>Target vs Realisasi</h3>
+          <h3>
+            Target vs Realisasi <span className="chip-ex kecil">Data contoh</span>
+          </h3>
           <p className="sub">{sub}</p>
         </div>
         <div className="chart-ctrl">
@@ -533,7 +542,40 @@ function BarisTabelPok({ b }: { b: BarisPok }) {
 
 function TabelPok({ judul }: { judul: ReactNode }) {
   const { barisPok, dataPok, boleh } = useStore();
-  const bisaUnggah = boleh("pok.unggah");
+  if (!dataPok) return <PokKosong judul={judul} bisaUnggah={boleh("pok.unggah")} />;
+  return <TabelPokIsi judul={judul} barisPok={barisPok} dataPok={dataPok} bisaUnggah={boleh("pok.unggah")} />;
+}
+
+/** Database belum berisi FA Detail sama sekali */
+function PokKosong({ judul, bisaUnggah }: { judul: ReactNode; bisaUnggah: boolean }) {
+  const [unggah, setUnggah] = useState(false);
+  return (
+    <section className="panel span3">
+      <div className="ph">
+        <div>
+          {judul}
+          <p className="sub">Belum ada data</p>
+        </div>
+      </div>
+      <div className="pok-kosong">
+        <Icon name="file" />
+        <b>Kertas Kerja POK belum tersedia</b>
+        <p>Unggah Laporan FA Detail 16 Segmen dari SAKTI (.xlsx) untuk mengisi tabel ini, kartu Pagu Belanja, dan daftar MAK di form pengajuan.</p>
+        {bisaUnggah ? (
+          <button type="button" className="btn dark sm" onClick={() => setUnggah(true)}>
+            <Icon name="upload" />
+            Upload FA Detail
+          </button>
+        ) : (
+          <span className="note">Upload dilakukan oleh Administrator atau Operator Unit.</span>
+        )}
+      </div>
+      {unggah && <UnggahFaDetail onClose={() => setUnggah(false)} />}
+    </section>
+  );
+}
+
+function TabelPokIsi({ judul, barisPok, dataPok, bisaUnggah }: { judul: ReactNode; barisPok: BarisPok[]; dataPok: DataPok; bisaUnggah: boolean }) {
   const [sumber, setSumber] = useState<FilterSumber>("Semua");
   const [jenisBel, setJenisBel] = useState<FilterJenisBelanja>("Semua");
   const [cari, setCari] = useState("");
@@ -642,7 +684,7 @@ function TabelPok({ judul }: { judul: ReactNode }) {
               diunggah{src.oleh && <> oleh <b>{src.oleh}</b></>}, {tanggalJam(src.diunggah)}
             </>
           ) : (
-            "data bawaan aplikasi"
+            "data awal saat pemasangan database"
           )}{" "}
           · sumber dana ditentukan dari kode akun (525xxx & 537xxx = BLU, lainnya RM)
         </span>
@@ -800,7 +842,7 @@ function BarisTarget({ k, bulan }: { k: KartuTarget; bulan: number }) {
    Halaman Dashboard
    ========================================================= */
 export default function Dashboard() {
-  const { pengesahan: riwayatSp3b, kegiatan, penggunaAktif } = useStore();
+  const { penggunaAktif, daftarMak, dataPok } = useStore();
   const [salam, setSalam] = useState("Selamat datang");
   const [filter, setFilter] = useState<FilterDana>("Gabung");
   /** Filter bulan untuk kartu target — default bulan berjalan */
@@ -808,17 +850,12 @@ export default function Dashboard() {
 
   useEffect(() => setSalam(sapaan(new Date().getHours())), []);
 
-  const jenis = useMemo(() => hitungJenis(filter), [filter]);
+  // Kartu Pagu Belanja mengikuti FA Detail SAKTI yang terakhir diunggah (Kertas Kerja POK)
+  const jenis = useMemo(() => hitungJenis(daftarMak, filter), [daftarMak, filter]);
   const pagu = jumlah(jenis.map((j) => j.pagu));
   const realisasi = jumlah(jenis.map((j) => j.realisasi));
-  const persen = (realisasi / pagu) * 100;
-
-  // BLU: pengesahan = riwayat SP3B + kegiatan yang disahkan pada periode berjalan (modul Pengesahan)
-  const disahkanBerjalan = kegiatan.filter((k) => k.dana === "BLU" && k.disahkan);
-  const pengesahanBLU = jumlah(riwayatSp3b.map((s) => s.pengesahan)) + jumlah(disahkanBerjalan.map((p) => p.nilai));
-  const periodeTerakhir = disahkanBerjalan.length
-    ? NAMA_BULAN[BULAN_BERJALAN - 1].slice(0, 3)
-    : (riwayatSp3b.find((s) => s.pengesahan > 0)?.periode.slice(0, 3) ?? "-"); // "Agustus 2026" → "Agu"
+  const persen = pagu ? (realisasi / pagu) * 100 : 0;
+  const periodeFa = dataPok?.sumber.periode;
 
   return (
     <>
@@ -850,7 +887,9 @@ export default function Dashboard() {
           </div>
           <div className="big num">{rupiah(pagu)}</div>
           <span className="delta up">↑ {desimal(persen)}%</span>{" "}
-          <span className="note">terealisasi s.d. {tanggal("2026-10-18")}</span>
+          <span className="note">
+            {dataPok ? `terealisasi s.d. ${periodeFa || "periode FA Detail"} · FA Detail SAKTI` : "belum ada FA Detail — unggah lewat tabel Kertas Kerja POK"}
+          </span>
 
           <div className="seg" role="group" aria-label="Filter sumber dana">
             {FILTER_DANA.map((f) => (
@@ -880,7 +919,13 @@ export default function Dashboard() {
                     <dl>
                       <div><dt>Pagu</dt><dd>{rupiah(j.pagu)}</dd></div>
                       <div><dt>Realisasi</dt><dd>{rupiah(j.realisasi)}</dd></div>
-                      <div><dt>Sisa</dt><dd className="sisa">{rupiah(j.sisa)}</dd></div>
+                      {j.lock > 0 && (
+                        <div title="Lock pagu (blokir) pada FA Detail">
+                          <dt>Lock</dt>
+                          <dd>{rupiah(j.lock)}</dd>
+                        </div>
+                      )}
+                      <div title="Pagu − lock − realisasi (sama dengan SISA ANGGARAN SAKTI)"><dt>Sisa</dt><dd className="sisa">{rupiah(j.sisa)}</dd></div>
                     </dl>
                   </div>
                 );
@@ -892,8 +937,8 @@ export default function Dashboard() {
         {/* ---------- Kartu BLU & RM ---------- */}
         <KartuDana
           dana="BLU"
-          pengesahan={pengesahanBLU}
-          catatanPengesahan={`SP3B s.d. ${periodeTerakhir}`}
+          pengesahan={CONTOH_PENGESAHAN_BLU}
+          catatanPengesahan={`SP3B s.d. ${NAMA_BULAN[BULAN_BERJALAN - 2].slice(0, 3)}`}
           catatanPencairan="belum disahkan"
         />
         <KartuDana
@@ -910,7 +955,9 @@ export default function Dashboard() {
         <section className="panel c-side" aria-label="Target per jenis belanja">
           <div className="ph target-head">
             <div>
-              <h3>Target per Jenis Belanja</h3>
+              <h3>
+                Target per Jenis Belanja <span className="chip-ex kecil">Data contoh</span>
+              </h3>
               <p className="sub">
                 {NAMA_BULAN[bulan - 1]} {TAHUN_BERJALAN}
                 {bulan === BULAN_BERJALAN ? " (berjalan)" : ""} · realisasi / target

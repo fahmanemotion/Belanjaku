@@ -12,13 +12,15 @@ import Icon from "@/components/Icon";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
 import { useStore } from "@/components/StoreProvider";
 import { Badge, EmptyRow, Modal, PageHead, SearchBox, Status } from "@/components/ui";
-import { NAMA_TAHAP, PERIODE_BERJALAN, jumlah } from "@/lib/data";
+import { NAMA_TAHAP, jumlah, periodeBerjalan } from "@/lib/data";
 import { desimal, rupiah, tanggal } from "@/lib/format";
 import type { Kegiatan, Sp3bBlu } from "@/lib/types";
 
 type Tampilan = "riwayat" | "daftar";
 
 const bisaDisahkan = (k: Kegiatan) => k.spp?.tahap === 4 && !k.disahkan;
+/** periode SP3B bulan berjalan (zona waktu Makassar) */
+const PERIODE_BERJALAN = periodeBerjalan();
 
 export default function Pengesahan() {
   const { pengesahan: riwayatLama, kegiatan, sahkan, boleh, toast } = useStore();
@@ -38,20 +40,22 @@ export default function Pengesahan() {
   const periodeBerjalan: Sp3bBlu = {
     nomor: PERIODE_BERJALAN.nomor,
     periode: PERIODE_BERJALAN.periode,
+    bulan: PERIODE_BERJALAN.bulan,
     pencairan: jumlah(cairBulanIni.map((k) => k.nilai)),
     pengesahan: jumlah(disahkanBulanIni.map((k) => k.nilai)),
   };
   const riwayat = [periodeBerjalan, ...riwayatLama];
   const terpilih = dokBlu.filter((k) => dipilih.includes(k.id));
 
-  const prosesSahkan = () => {
+  const prosesSahkan = async () => {
     const n = dipilih.length;
-    sahkan(dipilih);
+    const nomor = await sahkan(dipilih);
+    if (!nomor) return;
     setBaruDisahkan(dipilih);
     setDipilih([]);
     setKonfirmasi(false);
     setTampilan("riwayat");
-    toast(`${n} kegiatan disahkan pada ${PERIODE_BERJALAN.nomor}`);
+    toast(`${n} kegiatan disahkan pada ${nomor}`);
   };
 
   return (

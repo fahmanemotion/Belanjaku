@@ -1,17 +1,14 @@
 "use client";
 
 /**
- * Halaman masuk (login).
- * Prototipe: akun diambil dari modul Pengguna dan semua memakai kata sandi demo (lib/akses.ts).
- * Klik salah satu akun demo untuk mengisi form, lalu tekan Masuk — cara cepat berpindah peran.
+ * Halaman masuk (login) — Supabase Auth, email + kata sandi.
+ * Akun dibuat Administrator di modul Pengguna; akun pertama dibuat di dashboard Supabase (lihat README).
  */
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Icon from "./Icon";
 import Logo, { Wordmark } from "./Logo";
 import { useStore } from "./StoreProvider";
-import { AKSES, SANDI_DEMO } from "@/lib/akses";
-import { inisial } from "@/lib/format";
 
 /** Alur dokumen per peran, ditampilkan di panel kiri */
 const ALUR = [
@@ -23,37 +20,33 @@ const ALUR = [
 ];
 
 export default function Login() {
-  const { pengguna, masuk, toast } = useStore();
+  const { masuk, toast } = useStore();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [sandi, setSandi] = useState("");
   const [lihat, setLihat] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
+  const [sedang, setSedang] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
-  const tombolRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => emailRef.current?.focus(), []);
 
-  const kirim = (e: FormEvent) => {
+  const kirim = async (e: FormEvent) => {
     e.preventDefault();
+    if (sedang) return;
     if (!email.trim() || !sandi) {
       setGalat("Isi email dan kata sandi terlebih dahulu");
       return;
     }
-    const hasil = masuk(email, sandi);
+    setSedang(true);
+    const hasil = await masuk(email, sandi);
+    setSedang(false);
     if (!hasil.ok) {
       setGalat(hasil.pesan);
       return;
     }
     toast(`Selamat datang, ${hasil.nama}`);
     router.replace("/dashboard");
-  };
-
-  const pilihDemo = (em: string) => {
-    setEmail(em);
-    setSandi(SANDI_DEMO);
-    setGalat(null);
-    tombolRef.current?.focus();
   };
 
   return (
@@ -140,39 +133,16 @@ export default function Login() {
               </p>
             )}
 
-            <button ref={tombolRef} type="submit" className="btn acc login-btn">
-              Masuk
-              <Icon name="send" />
+            <button type="submit" className="btn acc login-btn" disabled={sedang} aria-busy={sedang}>
+              {sedang ? "Memeriksa…" : "Masuk"}
+              {!sedang && <Icon name="send" />}
             </button>
-          </form>
 
-          <section className="login-demo" aria-label="Akun demo">
-            <div className="login-demo-head">
-              <b>Akun demo</b>
-              <span>
-                Klik untuk mengisi · kata sandi <code>{SANDI_DEMO}</code>
-              </span>
-            </div>
-            <div className="login-demo-list">
-              {pengguna
-                .filter((u) => u.aktif)
-                .map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    className={`login-akun ${email.trim().toLowerCase() === u.email.toLowerCase() ? "pilih" : ""}`}
-                    onClick={() => pilihDemo(u.email)}
-                  >
-                    <span className="av">{inisial(u.nama)}</span>
-                    <span className="login-akun-teks">
-                      <b>{u.nama}</b>
-                      <small>{u.peran}</small>
-                      <em>{AKSES[u.peran]?.tugas}</em>
-                    </span>
-                  </button>
-                ))}
-            </div>
-          </section>
+            <p className="login-catatan">
+              <Icon name="shield" />
+              <span>Akun dibuat oleh Administrator. Lupa kata sandi? Minta Administrator mengatur ulang lewat modul Pengguna.</span>
+            </p>
+          </form>
         </div>
       </main>
     </div>

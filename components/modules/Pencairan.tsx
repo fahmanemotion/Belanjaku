@@ -30,6 +30,7 @@ export default function Pencairan() {
   const [tahap, setTahap] = useState<TahapPencairan | null>(null);
   const [cari, setCari] = useState("");
   const [formBaru, setFormBaru] = useState(false);
+  const [proses, setProses] = useState<string | null>(null);
 
   // Kegiatan yang sudah masuk proses pencairan (punya SPP)
   const denganSpp = kegiatan.filter((k) => k.spp);
@@ -44,8 +45,10 @@ export default function Pencairan() {
     )
     .sort((a, b) => b.spp!.no.localeCompare(a.spp!.no));
 
-  const proses = (id: string) => {
-    const hasil = majukanTahap(id);
+  const majukan = async (id: string) => {
+    setProses(id);
+    const hasil = await majukanTahap(id);
+    setProses(null);
     if (hasil?.spp) toast(hasil.spp.tahap === 4 ? `SP2D terbit untuk ${hasil.spp.no}` : `${hasil.spp.no} maju ke tahap ${NAMA_TAHAP[hasil.spp.tahap]}`);
   };
 
@@ -135,8 +138,8 @@ export default function Pencairan() {
                           (() => {
                             const berikut = (s.tahap + 1) as 2 | 3 | 4;
                             return boleh(TAHAP_PENCAIRAN[berikut].izin) ? (
-                              <button type="button" className="btn soft sm" onClick={() => proses(k.id)}>
-                                {LABEL_PROSES[berikut]}
+                              <button type="button" className="btn soft sm" disabled={proses === k.id} onClick={() => majukan(k.id)}>
+                                {proses === k.id ? "Memproses…" : LABEL_PROSES[berikut]}
                               </button>
                             ) : (
                               <span className="note">Menunggu {TAHAP_PENCAIRAN[berikut].pelaku}</span>
@@ -170,12 +173,13 @@ function FormSpp({ onClose }: { onClose: () => void }) {
   const [jenis, setJenis] = useState<JenisSpp>(pilihan?.jenisDokumen === "Kwitansi" ? "GU" : "LS");
   const [tgl, setTgl] = useState(hariIni());
 
-  const simpan = () => {
+  const simpan = async () => {
     if (!pilihan) {
       onClose();
       return;
     }
-    const no = buatSpp(pilihan.id, jenis, tgl);
+    const no = await buatSpp(pilihan.id, jenis, tgl);
+    if (!no) return;
     toast(`${no} diterbitkan`);
     onClose();
   };

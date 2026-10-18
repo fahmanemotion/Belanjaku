@@ -16,22 +16,26 @@ export default function UnggahFaDetail({ onClose }: { onClose: () => void }) {
   const { terapkanPok, toast } = useStore();
   const [membaca, setMembaca] = useState(false);
   const [hasil, setHasil] = useState<HasilFa | null>(null);
+  const [berkas, setBerkas] = useState<File | null>(null);
   const [seret, setSeret] = useState(false);
 
   const baca = async (f?: File | null) => {
     if (!f) return;
     setMembaca(true);
     setHasil(null);
-    setHasil(await bacaFaDetail(f));
+    const h = await bacaFaDetail(f);
+    setHasil(h);
+    setBerkas(h.ok ? f : null);
     setMembaca(false);
   };
 
-  const terapkan = () => {
+  const terapkan = async () => {
     if (!hasil?.ok) {
       toast(membaca ? "Tunggu, berkas masih dibaca" : "Pilih berkas FA Detail yang valid terlebih dahulu");
       return;
     }
-    if (terapkanPok(hasil.data)) {
+    // data disimpan ke database; file asli diarsipkan di Supabase Storage
+    if (await terapkanPok(hasil.data, berkas ?? undefined)) {
       const r = hasil.ringkasan;
       toast(`Kertas Kerja POK diperbarui · ${desimal(r.jumlahMak, 0)} MAK${r.jumlahItem ? ` · ${desimal(r.jumlahItem, 0)} item` : ""}`);
       onClose();
@@ -43,7 +47,7 @@ export default function UnggahFaDetail({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       title="Upload FA Detail"
-      description="Berkas Excel (.xlsx) dari SAKTI: Laporan Realisasi FA Detail 16 Segmen, per Program sampai Akun atau Item. Kertas Kerja POK akan diganti dengan isi berkas ini."
+      description="Berkas Excel (.xlsx) dari SAKTI: Laporan Realisasi FA Detail 16 Segmen, per Program sampai Akun atau Item. Kertas Kerja POK untuk semua pengguna akan diganti dengan isi berkas ini."
       submitLabel="Terapkan data"
       onSubmit={terapkan}
       onClose={onClose}

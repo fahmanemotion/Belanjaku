@@ -30,6 +30,8 @@ export default function Belanja() {
   const [diedit, setDiedit] = useState<Kegiatan | null>(null);
   const [dihapus, setDihapus] = useState<Kegiatan | null>(null);
   const [dicetak, setDicetak] = useState<Kegiatan | null>(null);
+  /** id dokumen yang sedang diproses (tombol alur terkunci sampai selesai) */
+  const [proses, setProses] = useState<string | null>(null);
 
   const bisaBuat = boleh("belanja.buat");
   const bisaVerifikasi = boleh("belanja.verifikasi");
@@ -53,21 +55,28 @@ export default function Belanja() {
     );
   }, [terlihat, filter, cari]);
 
+  const ubah = async (k: Kegiatan, status: StatusBelanja, pesan: string) => {
+    setProses(k.id);
+    if (await ubahStatus(k.id, status)) toast(pesan);
+    setProses(null);
+  };
+
   /** Tombol alur sesuai status dokumen dan peran yang sedang masuk */
   const alur = (k: Kegiatan) => {
     const milik = k.dibuatOleh === penggunaAktif.id;
+    const sibuk = proses === k.id;
     if (k.status === "Draf")
       return milik && bisaBuat ? (
-        <button type="button" className="btn soft sm" onClick={() => { ubahStatus(k.id, "Diajukan"); toast("Pengajuan diajukan, menunggu verifikasi pagu"); }}>
-          Ajukan
+        <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Diajukan", "Pengajuan diajukan, menunggu verifikasi pagu")}>
+          {sibuk ? "Memproses…" : "Ajukan"}
         </button>
       ) : (
         <span className="note">Belum diajukan</span>
       );
     if (k.status === "Diajukan")
       return bisaVerifikasi ? (
-        <button type="button" className="btn soft sm" onClick={() => { ubahStatus(k.id, "Diverifikasi"); toast("Pagu terverifikasi, menunggu persetujuan PPK"); }}>
-          Verifikasi
+        <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Diverifikasi", "Pagu terverifikasi, menunggu persetujuan PPK")}>
+          {sibuk ? "Memproses…" : "Verifikasi"}
         </button>
       ) : (
         <span className="note">Menunggu verifikasi</span>
@@ -75,10 +84,10 @@ export default function Belanja() {
     if (k.status === "Diverifikasi")
       return bisaSetujui ? (
         <div className="tbar" style={{ gap: 6, flexWrap: "nowrap" }}>
-          <button type="button" className="btn dark sm" onClick={() => { ubahStatus(k.id, "Disetujui"); toast("Pengajuan disetujui PPK"); }}>
+          <button type="button" className="btn dark sm" disabled={sibuk} onClick={() => ubah(k, "Disetujui", "Pengajuan disetujui PPK")}>
             Setujui
           </button>
-          <button type="button" className="btn soft sm" onClick={() => { ubahStatus(k.id, "Ditolak"); toast("Pengajuan dikembalikan ke unit"); }}>
+          <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Ditolak", "Pengajuan dikembalikan ke unit")}>
             Tolak
           </button>
         </div>
@@ -259,12 +268,12 @@ function KonfirmasiHapus({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
       description="Dokumen akan hilang dari daftar belanja. Isi dokumen dan alasan penghapusan tetap tersimpan di Riwayat Aktivitas."
       submitLabel="Hapus dokumen"
       bahaya
-      onSubmit={() => {
+      onSubmit={async () => {
         if (alasan.trim().length < 5) {
           toast("Tuliskan alasan penghapusan (minimal 5 karakter)");
           return;
         }
-        hapusKegiatan(k.id, alasan);
+        if (!(await hapusKegiatan(k.id, alasan))) return;
         toast(`${k.id} dihapus`);
         onClose();
       }}
@@ -293,7 +302,7 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
   const [uraian, setUraian] = useState(awal?.uraian ?? "");
   const [jenisDokumen, setJenisDokumen] = useState<JenisDokumen | "">(awal?.jenisDokumen ?? "Kwitansi");
   const [noDokumen, setNoDokumen] = useState(awal?.noDokumen ?? "");
-  const [penyedia, setPenyedia] = useState(awal?.penyedia ?? "");
+  const [penyedia, setPenyedia] = useState(awal?.penyediaId ?? "");
   const [unit, setUnit] = useState(awal?.unit ?? (unitSendiri ? penggunaAktif.unit : ""));
   const [dana, setDana] = useState<SumberDana | "">(awal?.dana ?? "");
   const [mak, setMak] = useState(awal?.mak ?? "");
@@ -304,7 +313,10 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
 
   /* ---------- pilihan combobox: cukup nama / kode, tanpa keterangan tambahan ---------- */
   const opsiDokumen: OpsiCombo[] = JENIS_DOKUMEN.map((j) => ({ value: j.value, label: j.value }));
-  const opsiPenyedia: OpsiCombo[] = referensi.penyedia.filter((p) => p.aktif).map((p) => ({ value: p.nama, label: p.nama }));
+  // penyedia nonaktif tetap tampil bila sudah dipakai dokumen ini (agar namanya terbaca, lalu bisa diganti)
+  const opsiPenyedia: OpsiCombo[] = referensi.penyedia
+    .filter((p) => p.aktif || p.id === awal?.penyediaId)
+    .map((p) => ({ value: p.id, label: p.aktif ? p.nama : `${p.nama} (tidak aktif)` }));
   const opsiUnit: OpsiCombo[] = referensi.unit
     .filter((u) => !unitSendiri || u.kode === penggunaAktif.unit)
     .map((u) => ({ value: u.kode, label: u.nama }));
@@ -325,7 +337,7 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
     if (mak && !akunSesuaiDana(akunDariMak(mak), d)) setMak("");
   };
 
-  const simpan = () => {
+  const simpan = async () => {
     const kurang = [
       !uraian.trim() && "uraian kegiatan",
       !jenisDokumen && "jenis dokumen",
@@ -357,19 +369,21 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
       akun: akunDariMak(mak),
       jenisDokumen: jenisDokumen as JenisDokumen,
       noDokumen: noDokumen.trim(),
-      penyedia,
+      penyediaId: penyedia,
+      penyedia: referensi.penyedia.find((p) => p.id === penyedia)?.nama ?? "",
       nilai: n,
       tanggal: tgl,
     };
     if (awal) {
-      const hasil = editKegiatan(awal.id, data, catatan);
+      const hasil = await editKegiatan(awal.id, data, catatan);
+      if (!hasil) return;
       if (hasil.berubah === 0) {
         toast("Belum ada perubahan untuk disimpan");
         return;
       }
       toast(`${awal.id}: ${hasil.berubah} kolom diubah${hasil.kembaliKeDraf ? " · status kembali ke Draf" : ""}`);
     } else {
-      const baru = tambahKegiatan(data);
+      const baru = await tambahKegiatan(data);
       if (!baru) return;
       toast(`${baru.id} tersimpan sebagai draf`);
     }

@@ -22,17 +22,9 @@ const PER_HALAMAN = 40;
 const infoJenis = (j: JenisAktivitas) => JENIS_AKTIVITAS.find((x) => x.value === j)!;
 
 export default function Aktivitas() {
-  const { aktivitas: semuaAktivitas, kegiatan, pengguna, infoPengguna, boleh, penggunaAktif } = useStore();
+  const { aktivitas, kegiatan, pengguna, infoPengguna, boleh, jejakDokumen } = useStore();
+  // Tanpa izin "lihat semua" (Operator Unit), database hanya mengirim aktivitas sendiri + dokumen unitnya
   const lihatSemua = boleh("aktivitas.semua");
-  // Tanpa izin "lihat semua" (Operator Unit): hanya aktivitas sendiri + aktivitas pada dokumen unitnya
-  const aktivitas = useMemo(() => {
-    if (lihatSemua) return semuaAktivitas;
-    const dok = new Set([
-      ...kegiatan.filter((k) => k.unit === penggunaAktif.unit || k.dibuatOleh === penggunaAktif.id).map((k) => k.id),
-      ...semuaAktivitas.filter((a) => a.oleh === penggunaAktif.id && a.jenis === "Buat" && a.objekId).map((a) => a.objekId!),
-    ]);
-    return semuaAktivitas.filter((a) => a.oleh === penggunaAktif.id || (a.objekId !== undefined && dok.has(a.objekId)));
-  }, [semuaAktivitas, lihatSemua, kegiatan, penggunaAktif.unit, penggunaAktif.id]);
   // "Hari ini" baru dihitung di browser agar tidak berbeda dengan hasil render server
   const [hari, setHari] = useState<string | null>(null);
   useEffect(() => setHari(hariIni()), []);
@@ -43,7 +35,20 @@ export default function Aktivitas() {
   const [periode, setPeriode] = useState<FilterPeriode>("Semua");
   const [cari, setCari] = useState("");
   const [lacak, setLacak] = useState<string | null>(null);
+  /** riwayat lengkap dokumen yang dilacak, langsung dari database (tidak terbatas 1.000 aktivitas terbaru) */
+  const [jejak, setJejak] = useState<TAktivitas[] | null>(null);
   const [batas, setBatas] = useState(PER_HALAMAN);
+
+  useEffect(() => {
+    if (!lacak) return;
+    let batal = false;
+    setJejak(null);
+    jejakDokumen(lacak).then((x) => !batal && setJejak(x));
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lacak, aktivitas.length]);
 
   const adaFilter = operator !== "Semua" || jenis !== "Semua" || modul !== "Semua" || periode !== "Semua" || cari !== "";
   const reset = () => {
@@ -82,7 +87,7 @@ export default function Aktivitas() {
       .toLowerCase();
 
   const hasil = useMemo(() => {
-    if (lacak) return aktivitas.filter((a) => a.objekId === lacak).slice().reverse(); // urut dari awal
+    if (lacak) return (jejak ?? aktivitas.filter((a) => a.objekId === lacak)).slice().reverse(); // urut dari awal
     const q = cari.trim().toLowerCase();
     return aktivitas.filter(
       (a) =>
@@ -93,7 +98,7 @@ export default function Aktivitas() {
         (!q || teksCari(a).includes(q)),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aktivitas, lacak, operator, jenis, modul, periode, cari, hari, infoPengguna]);
+  }, [aktivitas, jejak, lacak, operator, jenis, modul, periode, cari, hari, infoPengguna]);
 
   const tampil = lacak ? hasil : hasil.slice(0, batas);
 
