@@ -982,8 +982,32 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .tabel-pok td.main, .tabel-pok thead th:first-child { position: sticky; left: 0; z-index: 2; background: var(--panel); box-shadow: 1px 0 0 var(--line); }
 .tabel-pok thead th:first-child { background: var(--sub); }
 .tabel-pok tbody tr:hover td.main { background: color-mix(in srgb, var(--sub) 55%, var(--panel)); }
-.muat-lagi { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
-.muat-lagi span { margin-right: 4px; }
+
+/* ---------- Badge sumber dana: RM gelap, BLU oranye (sama dengan kartu RM & BLU dan warna di Referensi) ---------- */
+.badge.dana { min-width: 42px; text-align: center; letter-spacing: 0.03em; }
+.badge.dana-rm { background: var(--ink); color: var(--panel); }
+.badge.dana-blu { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- Pagination tabel (30 baris per halaman) ---------- */
+.paginasi { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-top: 14px; }
+.paginasi-info { margin: 0; font-size: 12.5px; color: var(--muted); }
+.paginasi-info b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.paginasi-nav { display: flex; align-items: center; gap: 4px; }
+.pg { min-width: 34px; height: 34px; padding: 0 9px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; transition: background 0.15s; }
+/* hover hanya untuk mouse, agar warna tidak tertinggal setelah disentuh di HP */
+@media (hover: hover) {
+  .pg:hover:not(:disabled) { background: var(--sub); }
+}
+.pg.on, .pg.on:hover { background: var(--ink); color: var(--panel); }
+.pg:disabled { opacity: 0.35; cursor: not-allowed; }
+.pg-panah { border: 1px solid var(--line); }
+.pg svg { width: 16px; height: 16px; }
+.pg svg.kiri { transform: rotate(90deg); }
+.pg svg.kanan { transform: rotate(-90deg); }
+.pg-elipsis { min-width: 20px; text-align: center; color: var(--muted); }
+.pg-ringkas { display: none; }
+/* saat pindah halaman, layar kembali ke judul tabel (tidak tertutup header yang menempel di atas) */
+.ada-paginasi { scroll-margin-top: 96px; }
 
 /* ---------- Modal upload FA Detail ---------- */
 .form .unggah-zona { position: relative; align-items: center; gap: 4px; padding: 22px 16px; text-align: center; color: var(--ink); background: var(--sub); border: 1.5px dashed var(--line); border-radius: 16px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
@@ -1025,8 +1049,18 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .tabel-pok .akun-ur::before { content: " · "; }
   .tw.stack .tabel-pok td.sisa-pok { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 10px; }
   .tw.stack .tabel-pok td.sisa-pok small { flex-basis: 100%; text-align: right; }
-  .muat-lagi span { flex-basis: 100%; margin: 0; text-align: center; }
-  .muat-lagi .btn { flex: 1 1 calc(50% - 5px); }
+}
+
+/* Pagination di HP: nomor halaman diganti dropdown "Halaman 2 dari 39" di antara tombol panah */
+@media (max-width: 560px) {
+  .paginasi { flex-direction: column; align-items: stretch; }
+  .paginasi-info { text-align: center; }
+  .paginasi-nav { gap: 8px; }
+  .pg-angka, .pg-elipsis { display: none; }
+  .pg-ringkas { display: inline-flex; flex: 1; min-width: 0; }
+  .pg-ringkas select { height: 40px; text-align: center; text-align-last: center; padding-left: 14px; }
+  .pg-panah { flex: none; width: 44px; height: 40px; }
+  .ada-paginasi { scroll-margin-top: 84px; }
 }
 
 /* ---------- Cetak: hanya lembar pengajuan yang ikut tercetak ---------- */

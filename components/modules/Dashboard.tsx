@@ -5,7 +5,7 @@ import GrafikTargetRealisasi, { type JenisGrafik } from "@/components/charts/Gra
 import Icon, { type IconName } from "@/components/Icon";
 import { useStore } from "@/components/StoreProvider";
 import UnggahFaDetail from "@/components/UnggahFaDetail";
-import { Badge, EmptyRow, PageHead, Saring, SearchBox } from "@/components/ui";
+import { BadgeDana, EmptyRow, PageHead, Paginasi, Saring, SearchBox, useHalaman } from "@/components/ui";
 import {
   BULAN_12,
   BULAN_BERJALAN,
@@ -116,7 +116,7 @@ function KartuDana({
           <h3>Belanja {dana}</h3>
           <p className="sub">{info.nama} · pagu {rupiahSingkat(pagu)}</p>
         </div>
-        <span className={`badge ${dana === "BLU" ? "w" : ""}`}>{dana}</span>
+        <BadgeDana dana={dana} />
       </div>
       <div className="tiles">
         <Tile
@@ -343,12 +343,6 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
   const [dok, setDok] = useState<FilterDok>("Semua");
   const [cari, setCari] = useState("");
   const adaFilter = sumber !== "Semua" || jenisBel !== "Semua" || dok !== "Semua" || cari !== "";
-  const reset = () => {
-    setSumber("Semua");
-    setJenisBel("Semua");
-    setDok("Semua");
-    setCari("");
-  };
 
   const baris = useMemo(() => {
     const q = cari.toLowerCase();
@@ -361,14 +355,29 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
     );
   }, [kegiatan, sumber, jenisBel, dok, cari]);
   const total = jumlah(baris.map((k) => k.nilai));
+  // 30 kegiatan per halaman; setiap filter berubah kembali ke halaman 1
+  const hal = useHalaman(baris);
+  const saring =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      hal.awal();
+    };
+  const reset = () => {
+    setSumber("Semua");
+    setJenisBel("Semua");
+    setDok("Semua");
+    setCari("");
+    hal.awal();
+  };
 
   return (
-    <section className="panel span3">
+    <section className="panel span3 ada-paginasi" ref={hal.ref}>
       <div className="ph">
         <div>
           {judul}
           <p className="sub">
-            {baris.length} kegiatan{semuaUnit ? "" : ` · ${namaUnit(penggunaAktif.unit)}`} · total {rupiah(total)}
+            {jml(baris.length)} kegiatan{semuaUnit ? "" : ` · ${namaUnit(penggunaAktif.unit)}`} · total {rupiah(total)}
             {sumber !== "Semua" && ` · ${sumber}`}
             {jenisBel !== "Semua" && ` · ${NAMA_JENIS_BELANJA[jenisBel]}`}
             {dok !== "Semua" && ` · ${dok}`}
@@ -378,7 +387,7 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
           <Saring<FilterSumber>
             label="Sumber dana"
             value={sumber}
-            onChange={setSumber}
+            onChange={saring(setSumber)}
             opsi={[
               { value: "Semua", label: "Semua dana" },
               { value: "RM", label: "RM" },
@@ -388,7 +397,7 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
           <Saring<FilterJenisBelanja>
             label="Jenis belanja"
             value={jenisBel}
-            onChange={setJenisBel}
+            onChange={saring(setJenisBel)}
             opsi={[
               { value: "Semua", label: "Semua belanja" },
               { value: "Pegawai", label: "Pegawai (51)" },
@@ -399,10 +408,10 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
           <Saring<FilterDok>
             label="Jenis dokumen"
             value={dok}
-            onChange={setDok}
+            onChange={saring(setDok)}
             opsi={[{ value: "Semua", label: "Semua dokumen" }, ...JENIS_DOKUMEN.map((j) => ({ value: j.value, label: j.value }))]}
           />
-          <SearchBox id="kegiatan-cari" value={cari} onChange={setCari} placeholder="Cari kegiatan atau penyedia" />
+          <SearchBox id="kegiatan-cari" value={cari} onChange={saring(setCari)} placeholder="Cari kegiatan atau penyedia" />
           {adaFilter && (
             <button type="button" className="btn soft sm" onClick={reset}>
               <Icon name="close" />
@@ -422,7 +431,7 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
             {baris.length === 0 ? (
               <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN}>Tidak ada kegiatan yang cocok.</EmptyRow>
             ) : (
-              baris.map((k) => (
+              hal.tampil.map((k) => (
                 <tr key={k.id}>
                   <SelKegiatan k={k} />
                 </tr>
@@ -432,13 +441,24 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
           {baris.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>Total {baris.length} kegiatan</td>
+                <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>
+                  Total {jml(baris.length)} kegiatan
+                  {hal.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
+                </td>
                 <td className="r num">{rupiah(total)}</td>
               </tr>
             </tfoot>
           )}
         </table>
       </div>
+      <Paginasi
+        halaman={hal.halaman}
+        jumlahHalaman={hal.jumlahHalaman}
+        total={baris.length}
+        ukuran={hal.ukuran}
+        satuan="kegiatan"
+        onPindah={hal.pindah}
+      />
     </section>
   );
 }
@@ -446,8 +466,6 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
 /* =========================================================
    Tabel Kertas Kerja POK (dari FA Detail SAKTI)
    ========================================================= */
-const LANGKAH_POK = 50;
-
 /** Kode MAK yang hanya terpotong di titik pemisah bila kolom sempit (HP) */
 function KodeMak({ kode }: { kode: string }) {
   return (
@@ -496,7 +514,7 @@ function BarisTabelPok({ b }: { b: BarisPok }) {
         data-label="Sumber Dana"
         title={m.dana === "BLU" ? `BLU — akun ${m.akun.slice(0, 3)}xxx adalah belanja BLU` : `RM — akun ${m.akun} bukan 525xxx/537xxx`}
       >
-        <Badge>{m.dana}</Badge>
+        <BadgeDana dana={m.dana} />
       </td>
       <td className="r num" data-label="Pagu">
         {rupiah(b.pagu)}
@@ -519,22 +537,8 @@ function TabelPok({ judul }: { judul: ReactNode }) {
   const [sumber, setSumber] = useState<FilterSumber>("Semua");
   const [jenisBel, setJenisBel] = useState<FilterJenisBelanja>("Semua");
   const [cari, setCari] = useState("");
-  const [batas, setBatas] = useState(LANGKAH_POK);
   const [unggah, setUnggah] = useState(false);
   const adaFilter = sumber !== "Semua" || jenisBel !== "Semua" || cari !== "";
-  /** setiap filter berubah, kembali ke 50 baris pertama */
-  const saring =
-    <T,>(set: (v: T) => void) =>
-    (v: T) => {
-      set(v);
-      setBatas(LANGKAH_POK);
-    };
-  const reset = () => {
-    setSumber("Semua");
-    setJenisBel("Semua");
-    setCari("");
-    setBatas(LANGKAH_POK);
-  };
 
   // Teks pencarian per baris: uraian item, sub komponen, kode MAK (termasuk akun), nama akun, komponen, RO, kegiatan
   const indeks = useMemo(
@@ -563,11 +567,24 @@ function TabelPok({ judul }: { judul: ReactNode }) {
   );
   const jumlahMak = useMemo(() => new Set(baris.map((b) => b.mak.kode)).size, [baris]);
   const adaItem = barisPok.some((b) => b.noItem);
-  const tampil = baris.slice(0, batas);
+  // 30 baris per halaman; setiap filter berubah kembali ke halaman 1
+  const hal = useHalaman(baris);
+  const saring =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      hal.awal();
+    };
+  const reset = () => {
+    setSumber("Semua");
+    setJenisBel("Semua");
+    setCari("");
+    hal.awal();
+  };
   const src = dataPok.sumber;
 
   return (
-    <section className="panel span3">
+    <section className="panel span3 ada-paginasi" ref={hal.ref}>
       <div className="ph">
         <div>
           {judul}
@@ -663,10 +680,10 @@ function TabelPok({ judul }: { judul: ReactNode }) {
             </tr>
           </thead>
           <tbody>
-            {tampil.length === 0 ? (
+            {hal.tampil.length === 0 ? (
               <EmptyRow cols={7}>Tidak ada baris Kertas Kerja POK yang cocok.</EmptyRow>
             ) : (
-              tampil.map((b) => <BarisTabelPok key={b.id} b={b} />)
+              hal.tampil.map((b) => <BarisTabelPok key={b.id} b={b} />)
             )}
           </tbody>
           {baris.length > 0 && (
@@ -674,7 +691,7 @@ function TabelPok({ judul }: { judul: ReactNode }) {
               <tr>
                 <td colSpan={4}>
                   Total {adaItem ? `${jml(baris.length)} item · ${jml(jumlahMak)} MAK` : `${jml(jumlahMak)} MAK`}
-                  {baris.length > tampil.length && <span className="note"> (semua baris hasil filter)</span>}
+                  {hal.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
                 </td>
                 <td className="r num">{rupiah(total.pagu)}</td>
                 <td className="r num">{rupiah(total.realisasi)}</td>
@@ -685,19 +702,14 @@ function TabelPok({ judul }: { judul: ReactNode }) {
         </table>
       </div>
 
-      {baris.length > tampil.length && (
-        <div className="muat-lagi">
-          <span>
-            Menampilkan {jml(tampil.length)} dari {jml(baris.length)} baris
-          </span>
-          <button type="button" className="btn soft sm" onClick={() => setBatas((n) => n + LANGKAH_POK)}>
-            Tampilkan {Math.min(LANGKAH_POK, baris.length - tampil.length)} lagi
-          </button>
-          <button type="button" className="btn soft sm" onClick={() => setBatas(baris.length)}>
-            Tampilkan semua
-          </button>
-        </div>
-      )}
+      <Paginasi
+        halaman={hal.halaman}
+        jumlahHalaman={hal.jumlahHalaman}
+        total={baris.length}
+        ukuran={hal.ukuran}
+        satuan={adaItem ? "item" : "MAK"}
+        onPindah={hal.pindah}
+      />
 
       {unggah && <UnggahFaDetail onClose={() => setUnggah(false)} />}
     </section>

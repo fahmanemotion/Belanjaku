@@ -11,7 +11,7 @@
 import { Fragment } from "react";
 import Icon from "./Icon";
 import { useStore } from "./StoreProvider";
-import { Badge } from "./ui";
+import { Badge, BadgeDana } from "./ui";
 import { infoJenisDokumen } from "@/lib/data";
 import { rupiah } from "@/lib/format";
 import type { Kegiatan } from "@/lib/types";
@@ -69,7 +69,7 @@ export function SelKegiatan({ k }: { k: Kegiatan }) {
       </td>
       <td data-label="Penyedia">{k.penyedia}</td>
       <td data-label="Sumber Dana">
-        <Badge>{k.dana}</Badge>
+        <BadgeDana dana={k.dana} />
       </td>
       <td data-label="Akun" title={namaAkun(k.akun)}>
         <span className="mono">{k.akun}</span>

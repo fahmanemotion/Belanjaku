@@ -45,7 +45,9 @@ Di Dashboard, klik judul tabel **Kegiatan Belanja** lalu pilih **Kertas Kerja PO
 - **Filter:** sumber dana, jenis belanja (51/52/53), pencarian (uraian, kode MAK, akun, komponen), tombol **Upload FA Detail**.
 - **Sumber dana divalidasi dari kode akun:** 525xxx (Barang BLU) dan 537xxx (Modal BLU) = **BLU**, akun lainnya = **RM**.
 - **Sisa anggaran** = pagu − lock pagu − realisasi s.d. periode (sama dengan kolom SISA ANGGARAN di SAKTI).
-- Baris total dan kotak ringkasan di atas tabel mengikuti filter; tabel menampilkan 50 baris, klik *Tampilkan … lagi* / *Tampilkan semua*.
+- Baris total dan kotak ringkasan di atas tabel mengikuti filter (total seluruh halaman).
+- Tabel **Kegiatan Belanja** dan **Kertas Kerja POK** dibagi per halaman, **30 baris per halaman**; di HP nomor halaman dipilih lewat dropdown.
+- Warna **sumber dana** sama di semua tabel: **RM gelap**, **BLU oranye** (sesuai kartu RM & BLU dan warna di Referensi).
 
 **Upload FA Detail** (Administrator & Operator Unit): unduh dari SAKTI *Laporan Realisasi SP2D — FA Detail 16 Segmen*
 per Program sampai **Item** (atau sampai Akun) dalam format **Excel (.xlsx)**, lalu klik **Upload FA Detail** dan pilih / seret filenya.
@@ -115,7 +117,7 @@ belanjaku-pip/
 │   ├── CetakKegiatan.tsx   # pratinjau & cetak lembar pengajuan (A4)
 │   ├── UnggahFaDetail.tsx  # modal upload FA Detail SAKTI + ringkasan validasi
 │   ├── Icon.tsx            # ikon SVG
-│   ├── ui.tsx              # PageHead, Tabs, SearchBox, Status, Badge, Modal, Field
+│   ├── ui.tsx              # PageHead, Tabs, SearchBox, Status, Badge, BadgeDana, Modal, Field, Paginasi
 │   └── modules/            # satu file per modul
 └── lib/
     ├── types.ts            # tipe data
@@ -134,4 +136,3 @@ belanjaku-pip/
 3. Buat tabel sesuai tipe di `lib/types.ts` (`pengajuan_belanja`, `dokumen_pencairan`, `sp3b_blu`, `pengguna`, tabel referensi) serta tabel pagu per jenis belanja & sumber dana untuk dashboard.
    Untuk Kertas Kerja POK, simpan hasil `bacaFaDetail` (tipe `DataPok` di `lib/mak.ts`) ke tabel `kertas_kerja_pok` di dalam `terapkanPok`, agar semua pengguna melihat data yang sama.
 4. Di `components/StoreProvider.tsx`, ganti nilai awal `useState(...)` dengan hasil query, lalu panggil `insert`/`update` Supabase di dalam fungsi aksi (`tambahBelanja`, `ubahStatusBelanja`, `buatSpp`, `majukanTahap`, `kirimSp3b`, `tambahPengguna`, `toggleAktifPengguna`, `setReferensi`).
-# Belanjaku

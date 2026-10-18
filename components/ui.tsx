@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Icon from "./Icon";
+import { desimal } from "@/lib/format";
 
 /* ---------- Judul halaman ---------- */
 export function PageHead({ title, subtitle, actions }: { title: ReactNode; subtitle: string; actions?: ReactNode }) {
@@ -28,6 +29,20 @@ export function Status({ tone, children }: { tone: Tone; children: ReactNode }) 
 
 export function Badge({ tone = "", children }: { tone?: Tone; children: ReactNode }) {
   return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+/* ---------- Badge sumber dana ----------
+   Warna tetap per dana agar langsung terbedakan di semua tabel:
+   RM gelap, BLU oranye — sama dengan kartu RM & BLU di Dashboard dan warna di Referensi. */
+const NAMA_DANA: Record<string, string> = { RM: "Rupiah Murni", BLU: "PNBP BLU" };
+
+export function BadgeDana({ dana }: { dana: string }) {
+  const kelas = dana === "RM" ? "dana-rm" : dana === "BLU" ? "dana-blu" : "";
+  return (
+    <span className={`badge dana ${kelas}`} title={NAMA_DANA[dana]}>
+      {dana}
+    </span>
+  );
 }
 
 /* ---------- Kolom pencarian ---------- */
@@ -167,6 +182,125 @@ export function Saring<T extends string>({
         ))}
       </select>
     </label>
+  );
+}
+
+/* ---------- Pagination tabel ---------- */
+export const BARIS_PER_HALAMAN = 30;
+
+/**
+ * Membagi baris tabel per halaman (30 baris).
+ * Panggil `awal()` saat filter berubah; halaman otomatis disesuaikan bila jumlah baris berkurang.
+ * Pasang `ref` di panel tabel agar layar kembali ke judul tabel saat pindah halaman.
+ */
+export function useHalaman<T>(baris: T[], ukuran = BARIS_PER_HALAMAN) {
+  const [halaman, setHalaman] = useState(1);
+  const ref = useRef<HTMLElement>(null);
+  const jumlahHalaman = Math.max(1, Math.ceil(baris.length / ukuran));
+  const aktif = Math.min(halaman, jumlahHalaman);
+  const tampil = useMemo(() => baris.slice((aktif - 1) * ukuran, aktif * ukuran), [baris, aktif, ukuran]);
+  const pindah = (h: number) => {
+    setHalaman(Math.min(Math.max(1, h), jumlahHalaman));
+    const el = ref.current;
+    if (el && el.getBoundingClientRect().top < 0) {
+      const halus = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: halus ? "smooth" : "auto", block: "start" });
+    }
+  };
+  return { halaman: aktif, jumlahHalaman, tampil, ukuran, ref, pindah, awal: () => setHalaman(1) };
+}
+
+/** Nomor halaman yang ditampilkan, mis. 1 … 4 5 6 … 39 (0 = elipsis) */
+function nomorHalaman(aktif: number, jumlah: number): number[] {
+  if (jumlah <= 7) return Array.from({ length: jumlah }, (_, i) => i + 1);
+  const pilih = new Set([1, jumlah, aktif - 1, aktif, aktif + 1]);
+  if (aktif <= 3) [2, 3, 4].forEach((n) => pilih.add(n));
+  if (aktif >= jumlah - 2) [jumlah - 3, jumlah - 2, jumlah - 1].forEach((n) => pilih.add(n));
+  const urut = Array.from(pilih).filter((n) => n >= 1 && n <= jumlah).sort((a, b) => a - b);
+  const hasil: number[] = [];
+  urut.forEach((n, i) => {
+    const sebelum = urut[i - 1];
+    if (i > 0 && n - sebelum === 2) hasil.push(sebelum + 1);
+    else if (i > 0 && n - sebelum > 2) hasil.push(0);
+    hasil.push(n);
+  });
+  return hasil;
+}
+
+export function Paginasi({
+  halaman,
+  jumlahHalaman,
+  total,
+  ukuran,
+  satuan,
+  onPindah,
+}: {
+  halaman: number;
+  jumlahHalaman: number;
+  total: number;
+  ukuran: number;
+  /** "kegiatan", "item", … */
+  satuan: string;
+  onPindah: (h: number) => void;
+}) {
+  if (total === 0) return null;
+  const dari = (halaman - 1) * ukuran + 1;
+  const sampai = Math.min(total, halaman * ukuran);
+  return (
+    <nav className="paginasi" aria-label={`Halaman tabel ${satuan}`}>
+      <p className="paginasi-info">
+        Menampilkan{" "}
+        <b>
+          {desimal(dari, 0)}–{desimal(sampai, 0)}
+        </b>{" "}
+        dari <b>{desimal(total, 0)}</b> {satuan}
+      </p>
+      {jumlahHalaman > 1 && (
+        <div className="paginasi-nav">
+          <button type="button" className="pg pg-panah" onClick={() => onPindah(halaman - 1)} disabled={halaman === 1} aria-label="Halaman sebelumnya">
+            <Icon name="chevron" className="kiri" />
+          </button>
+          {nomorHalaman(halaman, jumlahHalaman).map((n, i) =>
+            n === 0 ? (
+              <span key={`elipsis-${i}`} className="pg-elipsis" aria-hidden="true">
+                …
+              </span>
+            ) : (
+              <button
+                key={n}
+                type="button"
+                className={`pg pg-angka ${n === halaman ? "on" : ""}`}
+                aria-current={n === halaman ? "page" : undefined}
+                aria-label={`Halaman ${n}`}
+                onClick={() => onPindah(n)}
+              >
+                {n}
+              </button>
+            ),
+          )}
+          {/* HP: nomor halaman diganti dropdown agar muat dan bisa lompat ke halaman mana pun */}
+          <label className="sel pg-ringkas">
+            <span className="sr">Pilih halaman</span>
+            <select value={halaman} onChange={(e) => onPindah(Number(e.target.value))} aria-label="Pilih halaman">
+              {Array.from({ length: jumlahHalaman }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  Halaman {i + 1} dari {jumlahHalaman}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="pg pg-panah"
+            onClick={() => onPindah(halaman + 1)}
+            disabled={halaman === jumlahHalaman}
+            aria-label="Halaman berikutnya"
+          >
+            <Icon name="chevron" className="kanan" />
+          </button>
+        </div>
+      )}
+    </nav>
   );
 }
 
