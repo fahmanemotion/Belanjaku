@@ -2,7 +2,7 @@
   "name": "belanjaku-pip",
   "version": "0.1.0",
   "private": true,
-  "description": "Belanjaku — aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (front-end)",
+  "description": "Belanjaku — aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Next.js + Supabase)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0"

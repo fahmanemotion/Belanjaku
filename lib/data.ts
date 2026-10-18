@@ -1,22 +1,10 @@
 /**
- * DATA CONTOH (dummy).
- * Seluruh angka di sini hanya untuk prototipe tampilan.
- * Saat integrasi Supabase, ganti sumber data ini dengan query ke tabel masing-masing.
+ * Konstanta aplikasi + DATA CONTOH untuk panel Dashboard yang belum punya sumber data asli
+ * (grafik Target vs Realisasi, target per jenis belanja, kartu BLU & RM).
+ * Data transaksi (pengajuan, pencairan, pengesahan, pengguna, referensi, aktivitas, Kertas Kerja POK)
+ * sudah diambil dari database Supabase — lihat components/StoreProvider.tsx dan lib/db.ts.
  */
-import { rupiah } from "./format";
-import { AKUN_DIPA, akunDariMak } from "./mak";
-import type {
-  Aktivitas,
-  JenisAktivitas,
-  JenisDokumen,
-  Kegiatan,
-  ModulAktivitas,
-  Pengguna,
-  Peran,
-  Referensi,
-  Sp3bBlu,
-  StatusBelanja,
-} from "./types";
+import type { JenisAktivitas, JenisDokumen, ModulAktivitas, Peran, StatusBelanja } from "./types";
 
 export const TAHUN_ANGGARAN = 2026;
 export const KODE_DIPA = "DIPA 022.12.4.287494";
@@ -327,104 +315,19 @@ export const JENIS_DOKUMEN: {
 
 export const infoJenisDokumen = (j: JenisDokumen) => JENIS_DOKUMEN.find((x) => x.value === j) ?? JENIS_DOKUMEN[0];
 
-export const REFERENSI_AWAL: Referensi = {
-  // Daftar akun mengikuti DIPA (lib/mak.ts)
-  akun: Object.entries(AKUN_DIPA).map(([kode, uraian]) => ({ kode, uraian, jenis: labelJenisAkun(kode) })),
-  unit: [
-    { kode: "UK01", nama: "Bagian Administrasi Umum dan Keuangan", penanggungJawab: "Kabag AUK" },
-    { kode: "UK02", nama: "Bagian Administrasi Akademik dan Ketarunaan", penanggungJawab: "Kabag AAK" },
-    { kode: "UK03", nama: "Program Studi Nautika", penanggungJawab: "Ketua Prodi" },
-    { kode: "UK04", nama: "Program Studi Teknika", penanggungJawab: "Ketua Prodi" },
-    { kode: "UK05", nama: "Program Studi KALK", penanggungJawab: "Ketua Prodi" },
-    { kode: "UK06", nama: "Unit Diklat Keterampilan Khusus", penanggungJawab: "Kepala Unit" },
-    { kode: "UK07", nama: "Unit Laboratorium dan Simulator", penanggungJawab: "Kepala Unit" },
-    { kode: "UK08", nama: "Unit Penjaminan Mutu", penanggungJawab: "Kepala Unit" },
-  ],
-  penyedia: [
-    { nama: "CV Bahari Mandiri", bidang: "Alat tulis & bahan habis pakai", kota: "Makassar", aktif: true },
-    { nama: "PT Navigasi Teknik Nusantara", bidang: "Pemeliharaan simulator", kota: "Jakarta", aktif: true },
-    { nama: "PT Sulawesi Tour", bidang: "Tiket perjalanan dinas", kota: "Makassar", aktif: true },
-    { nama: "CV Karya Lestari", bidang: "Konsumsi kegiatan", kota: "Gowa", aktif: true },
-    { nama: "PT Cipta Daya Elektrik", bidang: "Instalasi listrik", kota: "Makassar", aktif: true },
-    { nama: "CV Samudra Safety Indonesia", bidang: "Alat keselamatan pelayaran", kota: "Surabaya", aktif: true },
-    { nama: "CV Grafika Losari", bidang: "Percetakan", kota: "Makassar", aktif: true },
-    { nama: "PT Sinar Bersih Celebes", bidang: "Jasa kebersihan", kota: "Makassar", aktif: true },
-    { nama: "PT PLN (Persero) UP3 Makassar Selatan", bidang: "Listrik", kota: "Makassar", aktif: true },
-    { nama: "Narasumber perorangan", bidang: "Honor narasumber", kota: "—", aktif: true },
-    { nama: "Daftar nominatif pegawai", bidang: "Pembayaran hak pegawai", kota: "—", aktif: true },
-    { nama: "PT Laut Biru Teknik", bidang: "Suku cadang mesin kapal", kota: "Jakarta", aktif: false },
-  ],
-  dana: [
-    { kode: "RM", nama: "Rupiah Murni", warna: "#141416" },
-    { kode: "BLU", nama: "PNBP BLU", warna: "#f05a1a" },
-    { kode: "HBH", nama: "Hibah", warna: "#9b9ba4" },
-  ],
-};
+/* ---------- Periode SP3B BLU berjalan (zona waktu Makassar, WITA = UTC+8) ---------- */
+export function periodeBerjalan(sekarang = new Date()) {
+  const wita = new Date(sekarang.getTime() + 8 * 3600 * 1000);
+  const th = wita.getUTCFullYear();
+  const bl = wita.getUTCMonth() + 1;
+  const mm = String(bl).padStart(2, "0");
+  return { nomor: `SP3B-BLU-${mm}/${th}`, periode: `${NAMA_BULAN[bl - 1]} ${th}`, bulan: `${th}-${mm}` };
+}
 
-/* ---------- Kegiatan (satu daftar untuk modul Belanja, Pencairan, Pengesahan & Dashboard) ---------- */
-
-const KEGIATAN_DASAR: Omit<Kegiatan, "dibuatOleh" | "akun">[] = [
-  { id: "BLJ-2026-0416", uraian: "Uang makan PNS — September", noDokumen: "0231/GJ/RM/X/2026", jenisDokumen: "Gaji", penyedia: "Daftar nominatif pegawai", dana: "RM", mak: "4627.EBA.994.001.A.511129", unit: "UK01", nilai: 42_350_000, tanggal: "2026-10-06", status: "Disetujui", spp: { no: "00292/SPP-LS/2026", jenis: "LS", tahap: 3, tanggal: "2026-10-13" } },
-  { id: "BLJ-2026-0415", uraian: "Uang lembur pegawai Bagian AUK — September", noDokumen: "0228/GJ/RM/X/2026", jenisDokumen: "Gaji", penyedia: "Daftar nominatif pegawai", dana: "RM", mak: "4627.EBA.994.001.A.512211", unit: "UK01", nilai: 18_600_000, tanggal: "2026-10-04", status: "Disetujui", spp: { no: "00280/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-08" } },
-  { id: "BLJ-2026-0414", uraian: "Pemeliharaan simulator ECDIS & radar", noDokumen: "012/KTR/PPK-BLU/X/2026", jenisDokumen: "Kontrak", penyedia: "PT Navigasi Teknik Nusantara", dana: "BLU", mak: "3996.CCA.002.054.A.525114", unit: "UK07", nilai: 186_500_000, tanggal: "2026-10-15", status: "Disetujui", spp: { no: "00290/SPP-LS/2026", jenis: "LS", tahap: 1, tanggal: "2026-10-16" } },
-  { id: "BLJ-2026-0413", uraian: "Instalasi listrik gedung simulator", noDokumen: "011/KTR/PPK-BLU/IX/2026", jenisDokumen: "Kontrak", penyedia: "PT Cipta Daya Elektrik", dana: "BLU", mak: "1975.EBB.951.053.A.537113", unit: "UK07", nilai: 312_400_000, tanggal: "2026-10-12", status: "Disetujui", spp: { no: "00289/SPP-LS/2026", jenis: "LS", tahap: 2, tanggal: "2026-10-14" } },
-  { id: "BLJ-2026-0412", uraian: "Perjalanan dinas rapat koordinasi diklat ke Jakarta", noDokumen: "0415/SPD/BLU/X/2026", jenisDokumen: "Perjadin", penyedia: "PT Sulawesi Tour", dana: "BLU", mak: "4627.EBA.962.052.A.525115", unit: "UK06", nilai: 24_750_000, tanggal: "2026-10-10", status: "Disetujui", spp: { no: "00288/SPP-LS/2026", jenis: "LS", tahap: 3, tanggal: "2026-10-12" } },
-  { id: "BLJ-2026-0411", uraian: "Konsumsi ujian keahlian pelaut ANT-III", noDokumen: "0418/KWT/BLU/X/2026", jenisDokumen: "Kwitansi", penyedia: "CV Karya Lestari", dana: "BLU", mak: "3996.DCB.011.601.A.525112", unit: "UK06", nilai: 38_400_000, tanggal: "2026-10-09", status: "Disetujui", spp: { no: "00287/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-11" } },
-  { id: "BLJ-2026-0410", uraian: "Cetak modul diklat Basic Safety Training", noDokumen: "0402/KWT/BLU/X/2026", jenisDokumen: "Kwitansi", penyedia: "CV Grafika Losari", dana: "BLU", mak: "3996.DCB.011.051.A.525112", unit: "UK06", nilai: 18_250_000, tanggal: "2026-10-08", status: "Disetujui", spp: { no: "00286/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-10" } },
-  { id: "BLJ-2026-0409", uraian: "Langganan daya listrik gedung asrama", noDokumen: "0407/KWT/BLU/X/2026", jenisDokumen: "Kwitansi", penyedia: "PT PLN (Persero) UP3 Makassar Selatan", dana: "BLU", mak: "4627.EBA.994.002.B.525112", unit: "UK01", nilai: 61_200_000, tanggal: "2026-10-07", status: "Disetujui", spp: { no: "00285/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-09" } },
-  { id: "BLJ-2026-0408", uraian: "Bahan praktik mesin Diklat Kecakapan Kapal Tradisional", noDokumen: "027/SPK/PPK-RM/X/2026", jenisDokumen: "Kontrak", penyedia: "CV Bahari Mandiri", dana: "RM", mak: "3996.SCB.005.059.A.521211", unit: "UK04", nilai: 47_800_000, tanggal: "2026-10-05", status: "Disetujui", spp: { no: "00284/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-07" } },
-  { id: "BLJ-2026-0407", uraian: "Konsumsi rapat koordinasi kerja triwulan IV", noDokumen: "0409/KWT/BLU/X/2026", jenisDokumen: "Kwitansi", penyedia: "CV Karya Lestari", dana: "BLU", mak: "4627.EBA.962.052.A.525112", unit: "UK01", nilai: 22_150_000, tanggal: "2026-10-03", status: "Disetujui", spp: { no: "00283/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-06" } },
-  { id: "BLJ-2026-0406", uraian: "Konsumsi & perlengkapan Diksar Taruna angkatan 2026", noDokumen: "010/KTR/PPK-BLU/IX/2026", jenisDokumen: "Kontrak", penyedia: "CV Karya Lestari", dana: "BLU", mak: "1975.DAB.002.601.C.525112", unit: "UK02", nilai: 350_000_000, tanggal: "2026-09-29", status: "Disetujui", spp: { no: "00282/SPP-TUP/2026", jenis: "TUP", tahap: 4, tanggal: "2026-10-02" } },
-  { id: "BLJ-2026-0405", uraian: "Jasa cleaning service gedung asrama — Oktober", noDokumen: "009/KTR/PPK-BLU/I/2026", jenisDokumen: "Kontrak", penyedia: "PT Sinar Bersih Celebes", dana: "BLU", mak: "4627.EBA.962.052.C.525113", unit: "UK01", nilai: 34_900_000, tanggal: "2026-09-30", status: "Disetujui", spp: { no: "00281/SPP-LS/2026", jenis: "LS", tahap: 4, tanggal: "2026-10-01" } },
-  { id: "BLJ-2026-0404", uraian: "Pengadaan life jacket & ring buoy dukungan Sekolah Rakyat", noDokumen: "026/SPK/PPK-RM/X/2026", jenisDokumen: "Kontrak", penyedia: "CV Samudra Safety Indonesia", dana: "RM", mak: "3996.DCB.018.052.B.521211", unit: "UK03", nilai: 64_900_000, tanggal: "2026-10-14", status: "Disetujui" },
-  { id: "BLJ-2026-0403", uraian: "Pengadaan kursi lab bahasa", noDokumen: "013/SPK/PPK-BLU/X/2026", jenisDokumen: "Kontrak", penyedia: "CV Bahari Mandiri", dana: "BLU", mak: "1975.EBB.951.053.A.537112", unit: "UK02", nilai: 92_300_000, tanggal: "2026-10-16", status: "Diverifikasi" },
-  { id: "BLJ-2026-0402", uraian: "Sewa bus kegiatan kuliah umum taruna", noDokumen: "0221/KWT/RM/X/2026", jenisDokumen: "Kwitansi", penyedia: "PT Sulawesi Tour", dana: "RM", mak: "3996.SAB.004.601.D.521219", unit: "UK03", nilai: 12_000_000, tanggal: "2026-10-17", status: "Diajukan" },
-  { id: "BLJ-2026-0401", uraian: "Honor narasumber pengabdian masyarakat Sekolah Rakyat", noDokumen: "0211/HON/RM/X/2026", jenisDokumen: "Honorarium", penyedia: "Narasumber perorangan", dana: "RM", mak: "3996.DCB.018.052.B.521213", unit: "UK08", nilai: 15_600_000, tanggal: "2026-10-17", status: "Draf" },
-  { id: "BLJ-2026-0400", uraian: "Konsumsi rapat Dewan Pengawas", noDokumen: "0398/KWT/BLU/X/2026", jenisDokumen: "Kwitansi", penyedia: "CV Karya Lestari", dana: "BLU", mak: "4627.EBD.953.051.L.525112", unit: "UK01", nilai: 9_600_000, tanggal: "2026-10-04", status: "Ditolak" },
-];
-
-/** Operator pembuat tiap pengajuan contoh (menurut unit kerja); unit lain dibuat oleh u1 */
-const PEMBUAT_PER_UNIT: Record<string, string> = { UK03: "u5", UK04: "u6", UK06: "u7" };
-
-export const KEGIATAN_AWAL: Kegiatan[] = KEGIATAN_DASAR.map((k) => ({
-  ...k,
-  akun: akunDariMak(k.mak),
-  dibuatOleh: PEMBUAT_PER_UNIT[k.unit] ?? "u1",
-}));
-
-/* ---------- Pengesahan (SP3B BLU) ---------- */
-
-/** Periode pengesahan yang sedang berjalan */
-export const PERIODE_BERJALAN = { nomor: "SP3B-BLU-10/2026", periode: "Oktober 2026", bulan: "2026-10" };
-
-/** Sebagian SPJ September yang belum disahkan (masih outstanding) */
-const OUTSTANDING_SEPTEMBER = 352_500_000;
-
-/**
- * Riwayat pengesahan Januari–September (terbaru di atas).
- * Pencairan tiap bulan = realisasi belanja BLU bulan tersebut.
- * Periode Oktober dihitung langsung dari dokumen di modul Pencairan.
- */
-export const PENGESAHAN_AWAL: Sp3bBlu[] = REALISASI_BULANAN.BLU.slice(0, BULAN_BERJALAN - 1)
-  .map((nilai, i) => ({
-    nomor: `SP3B-BLU-${String(i + 1).padStart(2, "0")}/2026`,
-    periode: `${NAMA_BULAN[i]} 2026`,
-    pencairan: nilai,
-    pengesahan: i === BULAN_BERJALAN - 2 ? nilai - OUTSTANDING_SEPTEMBER : nilai,
-  }))
-  .reverse();
+/** Data contoh kartu BLU: pengesahan SP3B Januari–September (sebelum aplikasi dipakai) */
+export const CONTOH_PENGESAHAN_BLU = jumlah(REALISASI_BULANAN.BLU.slice(0, BULAN_BERJALAN - 1)) - 352_500_000;
 
 export const PERAN: Peran[] = ["Administrator", "PPK", "PPSPM", "Bendahara Pengeluaran", "Operator Unit"];
-
-export const PENGGUNA_AWAL: Pengguna[] = [
-  { id: "u1", nama: "Fahman", email: "perencanaan@pipmakassar.ac.id", peran: "Administrator", unit: "UK01", aktif: true },
-  { id: "u2", nama: "Andi Rahmawati", email: "ppk@pipmakassar.ac.id", peran: "PPK", unit: "UK01", aktif: true },
-  { id: "u3", nama: "Muh. Syahrir", email: "ppspm@pipmakassar.ac.id", peran: "PPSPM", unit: "UK01", aktif: true },
-  { id: "u4", nama: "Nurul Hikmah", email: "bendahara.blu@pipmakassar.ac.id", peran: "Bendahara Pengeluaran", unit: "UK01", aktif: true },
-  { id: "u5", nama: "Capt. Rudy Hartono", email: "nautika@pipmakassar.ac.id", peran: "Operator Unit", unit: "UK03", aktif: true },
-  { id: "u6", nama: "Ir. Baharuddin", email: "teknika@pipmakassar.ac.id", peran: "Operator Unit", unit: "UK04", aktif: true },
-  { id: "u7", nama: "Sri Wahyuni", email: "diklat@pipmakassar.ac.id", peran: "Operator Unit", unit: "UK06", aktif: false },
-];
 
 export const STATUS_BELANJA: StatusBelanja[] = ["Draf", "Diajukan", "Diverifikasi", "Disetujui", "Ditolak"];
 
@@ -447,79 +350,3 @@ export const JENIS_AKTIVITAS: { value: JenisAktivitas; label: string; tone: "g" 
 
 export const MODUL_AKTIVITAS: ModulAktivitas[] = ["Belanja", "Pencairan", "Pengesahan", "Pengguna", "Referensi", "Sistem"];
 
-/** Kalimat aksi saat status pengajuan berubah */
-export const AKSI_STATUS: Record<StatusBelanja, string> = {
-  Draf: "mengembalikan ke draf",
-  Diajukan: "mengajukan untuk diverifikasi",
-  Diverifikasi: "memverifikasi pagu pengajuan",
-  Disetujui: "menyetujui pengajuan",
-  Ditolak: "mengembalikan pengajuan ke unit",
-};
-
-/** Kalimat aksi & pelaku contoh tiap tahap pencairan */
-export const AKSI_TAHAP: Record<number, { aksi: string; oleh: string }> = {
-  2: { aksi: "memverifikasi SPP", oleh: "u3" },
-  3: { aksi: "menerbitkan SPM", oleh: "u3" },
-  4: { aksi: "mencatat SP2D terbit", oleh: "u4" },
-};
-
-const tambahHari = (iso: string, n: number) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-};
-const pukul = (tgl: string, j: number, mnt: number) => `${tgl}T${String(j).padStart(2, "0")}:${String(mnt).padStart(2, "0")}:00`;
-
-/** Nilai saat dibuat untuk dokumen yang kemudian diubah (agar jejaknya konsisten) */
-const NILAI_SAAT_DIBUAT: Record<string, number> = { "BLJ-2026-0402": 13_500_000 };
-
-/** Riwayat contoh disusun dari data kegiatan, ditambah beberapa kejadian khusus (ubah, hapus, cetak) */
-function susunAktivitasAwal(): Aktivitas[] {
-  const log: Omit<Aktivitas, "id">[] = [];
-  KEGIATAN_AWAL.forEach((k, i) => {
-    const m = (i * 7) % 40;
-    const obj = { objekId: k.id, objekLabel: k.uraian, modul: "Belanja" as const };
-    log.push({
-      ...obj,
-      waktu: pukul(k.tanggal, 8, m + 5),
-      oleh: k.dibuatOleh,
-      jenis: "Buat",
-      aksi: "membuat pengajuan",
-      catatan: `${k.jenisDokumen} · ${rupiah(NILAI_SAAT_DIBUAT[k.id] ?? k.nilai)} · MAK ${k.mak}`,
-    });
-    if (k.status === "Draf") return;
-    log.push({ ...obj, waktu: pukul(k.tanggal, 9, m + 10), oleh: k.dibuatOleh, jenis: "Status", aksi: AKSI_STATUS.Diajukan, perubahan: [{ kolom: "Status", dari: "Draf", ke: "Diajukan" }] });
-    if (k.status === "Diajukan") return;
-    log.push({ ...obj, waktu: pukul(k.tanggal, 13, m + 3), oleh: "u1", jenis: "Status", aksi: AKSI_STATUS.Diverifikasi, perubahan: [{ kolom: "Status", dari: "Diajukan", ke: "Diverifikasi" }] });
-    if (k.status === "Ditolak") {
-      log.push({ ...obj, waktu: pukul(k.tanggal, 15, m + 12), oleh: "u2", jenis: "Status", aksi: AKSI_STATUS.Ditolak, perubahan: [{ kolom: "Status", dari: "Diverifikasi", ke: "Ditolak" }], catatan: "Nilai konsumsi melebihi standar biaya masukan, mohon disesuaikan" });
-      return;
-    }
-    if (k.status !== "Disetujui") return;
-    log.push({ ...obj, waktu: pukul(k.tanggal, 15, m + 12), oleh: "u2", jenis: "Status", aksi: AKSI_STATUS.Disetujui, perubahan: [{ kolom: "Status", dari: "Diverifikasi", ke: "Disetujui" }] });
-    if (!k.spp) return;
-    const sp = { ...obj, modul: "Pencairan" as const, jenis: "Pencairan" as const };
-    log.push({ ...sp, waktu: pukul(k.spp.tanggal, 10, m + 8), oleh: "u2", aksi: `membuat SPP-${k.spp.jenis}`, catatan: `No. ${k.spp.no}` });
-    for (let t = 2; t <= k.spp.tahap; t++) {
-      log.push({ ...sp, waktu: pukul(tambahHari(k.spp.tanggal, t - 1), 9 + t, m + 4), oleh: AKSI_TAHAP[t].oleh, aksi: AKSI_TAHAP[t].aksi, perubahan: [{ kolom: "Tahap", dari: NAMA_TAHAP[t - 1], ke: NAMA_TAHAP[t] }] });
-    }
-  });
-
-  // Kejadian khusus untuk contoh penelusuran
-  log.push(
-    { waktu: "2026-10-17T08:52:00", oleh: "u5", jenis: "Ubah", modul: "Belanja", aksi: "mengubah pengajuan", objekId: "BLJ-2026-0402", objekLabel: "Sewa bus kegiatan kuliah umum taruna", perubahan: [{ kolom: "Nilai", dari: rupiah(13_500_000), ke: rupiah(12_000_000) }], catatan: "Penyesuaian harga sesuai penawaran akhir penyedia" },
-    { waktu: "2026-10-16T08:51:00", oleh: "u1", jenis: "Ubah", modul: "Belanja", aksi: "mengubah pengajuan", objekId: "BLJ-2026-0403", objekLabel: "Pengadaan kursi lab bahasa", perubahan: [{ kolom: "No. dokumen", dari: "013/SPK/PPK-BLU/IX/2026", ke: "013/SPK/PPK-BLU/X/2026" }], catatan: "Bulan pada nomor SPK salah ketik" },
-    { waktu: "2026-10-05T08:12:00", oleh: "u6", jenis: "Buat", modul: "Belanja", aksi: "membuat pengajuan", objekId: "BLJ-2026-0399", objekLabel: "Bahan praktik mesin Diklat Kecakapan Kapal Tradisional", catatan: `Kontrak · ${rupiah(47_800_000)} · MAK 3996.SCB.005.059.A.521211` },
-    { waktu: "2026-10-05T09:14:00", oleh: "u6", jenis: "Hapus", modul: "Belanja", aksi: "menghapus pengajuan", objekId: "BLJ-2026-0399", objekLabel: "Bahan praktik mesin Diklat Kecakapan Kapal Tradisional", catatan: "Terinput dua kali, dokumen yang dipakai BLJ-2026-0408" },
-    { waktu: "2026-10-15T16:10:00", oleh: "u1", jenis: "Cetak", modul: "Belanja", aksi: "mencetak lembar pengajuan", objekId: "BLJ-2026-0414", objekLabel: "Pemeliharaan simulator ECDIS & radar" },
-    { waktu: "2026-09-29T16:20:00", oleh: "u2", jenis: "Cetak", modul: "Belanja", aksi: "mencetak lembar pengajuan", objekId: "BLJ-2026-0406", objekLabel: "Konsumsi & perlengkapan Diksar Taruna angkatan 2026" },
-    { waktu: "2026-10-01T10:15:00", oleh: "u1", jenis: "Pengguna", modul: "Pengguna", aksi: "menonaktifkan pengguna", objekId: "u7", objekLabel: "Sri Wahyuni", perubahan: [{ kolom: "Status", dari: "Aktif", ke: "Nonaktif" }] },
-  );
-
-  return log
-    .sort((a, b) => a.waktu.localeCompare(b.waktu))
-    .map((a, i) => ({ ...a, id: `A${String(i + 1).padStart(5, "0")}` }))
-    .reverse();
-}
-
-/** Terbaru di atas */
-export const AKTIVITAS_AWAL: Aktivitas[] = susunAktivitasAwal();

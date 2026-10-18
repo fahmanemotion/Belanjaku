@@ -1,16 +1,14 @@
 /**
  * MATA ANGGARAN KEGIATAN (MAK) & KERTAS KERJA POK
  * ------------------------------------------------
- * Sumber data: Laporan Realisasi SP2D "FA Detail 16 Segmen" (GLP039) dari SAKTI.
- * Data bawaan ada di lib/pokBawaan.ts (dibuat otomatis dari file FA Detail);
- * operator/admin dapat mengganti datanya lewat tombol "Upload FA Detail" di Dashboard (lib/faDetail.ts).
+ * Sumber data: Laporan Realisasi SP2D "FA Detail 16 Segmen" (GLP039) dari SAKTI,
+ * disimpan di database (tabel pok_unggahan, pok_mak, pok_item; dibaca lewat RPC pok_aktif).
+ * Operator/admin mengganti datanya lewat tombol "Upload FA Detail" di Dashboard (lib/faDetail.ts).
  *
  * Format kode MAK: Kegiatan.KRO.RO.Komponen.SubKomponen.Akun   contoh 1975.DAB.002.051.A.521211
  * Sumber dana tidak tercantum di FA Detail, jadi ditentukan dari kode akun:
  *   525xxx (Barang BLU) dan 537xxx (Modal BLU) = BLU, akun lainnya = RM.
  */
-export { AKUN_DIPA, POK_BAWAAN } from "./pokBawaan";
-
 /** [kode MAK, pagu, lock pagu, realisasi s.d. periode] */
 export type BarisMakMentah = [kode: string, pagu: number, lock: number, realisasi: number];
 /** [nomor item, uraian item, pagu, lock pagu, realisasi s.d. periode] */
@@ -18,7 +16,8 @@ export type ItemMentah = [no: string, uraian: string, pagu: number, lock: number
 
 /** Isi satu file FA Detail dalam bentuk ringkas (mudah disimpan / dikirim ke database) */
 export interface DataPok {
-  sumber: { file: string; periode: string; satker: string; diunggah?: string; oleh?: string };
+  /** diunggah & oleh kosong untuk data awal yang dipasang bersama database */
+  sumber: { file: string; periode: string; satker: string; tahun?: number; diunggah?: string; oleh?: string };
   /** uraian tiap level kode: "1975", "1975.DAB", "1975.DAB.002", "…051", "…051.A" */
   uraian: Record<string, string>;
   /** nama akun: "521211" → "Belanja Bahan" */

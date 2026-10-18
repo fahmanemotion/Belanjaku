@@ -20,6 +20,9 @@ export interface Kegiatan {
   uraian: string;
   noDokumen: string;
   jenisDokumen: JenisDokumen;
+  /** id penyedia di tabel referensi */
+  penyediaId: string;
+  /** nama penyedia (untuk tampilan) */
   penyedia: string;
   dana: SumberDana;
   /** Mata Anggaran Kegiatan sesuai kertas kerja DIPA, mis. 1975.DAB.002.051.A.521211 */
@@ -85,6 +88,8 @@ export interface Aktivitas {
 export interface Sp3bBlu {
   nomor: string;
   periode: string;
+  /** "2026-10" */
+  bulan: string;
   pencairan: number;
   pengesahan: number;
 }
@@ -96,8 +101,11 @@ export interface Pengguna {
   nama: string;
   email: string;
   peran: Peran;
+  /** kosong untuk peran di luar Operator Unit yang tidak terikat unit */
   unit: string;
   aktif: boolean;
+  /** profil akun yang sudah dihapus (tetap disimpan agar riwayat terbaca) */
+  dihapus?: boolean;
 }
 
 export interface RefAkun {
@@ -113,6 +121,7 @@ export interface RefUnit {
 }
 
 export interface RefPenyedia {
+  id: string;
   nama: string;
   bidang: string;
   kota: string;

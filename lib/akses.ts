@@ -11,8 +11,9 @@
  *   PPSPM          : uji SPP dan terbitkan SPM                     (SPP → Verifikasi → SPM)
  *   Bendahara      : catat SP2D terbit, sahkan belanja BLU (SP3B)  (SPM → SP2D → Disahkan)
  *
- * Catatan prototipe: login masih simulasi di browser (semua akun memakai SANDI_DEMO).
- * Saat integrasi Supabase Auth, aturan yang sama sebaiknya juga dipasang di database (Row Level Security).
+ * Login memakai Supabase Auth. Izin aksi yang SAMA juga tersimpan di database (tabel izin_peran)
+ * dan diperiksa oleh Row Level Security serta fungsi RPC — tampilan hanya mengikuti.
+ * Bila mengubah pembagian izin, ubah tabel izin_peran di database DAN tabel AKSES di bawah.
  */
 import type { Peran } from "./types";
 
@@ -95,6 +96,3 @@ export const TAHAP_PENCAIRAN: Record<2 | 3 | 4, { izin: Izin; pelaku: string }> 
   3: { izin: "pencairan.ppspm", pelaku: "PPSPM" },
   4: { izin: "pencairan.sp2d", pelaku: "Bendahara" },
 };
-
-/** Kata sandi demo untuk semua akun (prototipe) */
-export const SANDI_DEMO = "pip2026";
