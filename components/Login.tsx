@@ -13,9 +13,9 @@ import { useStore } from "./StoreProvider";
 /** Alur dokumen per peran, ditampilkan di panel kiri */
 const ALUR = [
   { peran: "Operator Pengadaan", aksi: "Catat dokumen belanja" },
-  { peran: "Operator Keuangan", aksi: "Centang & cairkan" },
+  { peran: "Operator Pencairan", aksi: "Centang & cairkan" },
   { peran: "Operator Pengesahan", aksi: "Centang & sahkan" },
-  { peran: "PPK & PPSPM", aksi: "Pantau dokumen" },
+  { peran: "Pejabat Pengadaan, PPK & Manajemen", aksi: "Pantau dokumen" },
   { peran: "Administrator", aksi: "Kelola pengguna & referensi" },
 ];
 

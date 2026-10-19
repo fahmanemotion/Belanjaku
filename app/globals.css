@@ -564,6 +564,9 @@ button.me:hover, button.me.buka { box-shadow: 0 0 0 2px color-mix(in srgb, var(-
 }
 .pratinjau-bar b { display: block; font-family: var(--f-display); font-size: 16px; }
 .pratinjau-bar span { font-size: 12px; color: var(--muted); }
+/* PPK penanda tangan (bila ada lebih dari satu PPK) */
+.pilih-ppk { display: inline-flex; align-items: center; gap: 8px; }
+.pilih-ppk select { border: 1px solid var(--line); background: var(--sub); color: var(--ink); border-radius: 10px; padding: 7px 10px; font-size: 13px; font-weight: 600; max-width: 220px; }
 .pratinjau-isi { flex: 1; overflow: auto; padding: 28px 16px 48px; overscroll-behavior: contain; }
 .kertas {
   width: 210mm; max-width: 100%; min-height: 297mm; margin: 0 auto; background: #fff; color: #18181b;
@@ -1096,8 +1099,12 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 /* Isian nilai rupiah (5.000.000) + terbilang */
 .form .isian-rupiah { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
 .form .isian-catatan { font-size: 11.5px; font-weight: 500; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; }
-.modal .catatan-sisa { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--ink); font-size: 12.5px; line-height: 1.45; }
-.modal .catatan-sisa svg { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--warn); }
+/* Modul Pengguna: peran tanpa unit kerja */
+/* kartu peran berupa tombol: isi rata atas agar angka sejajar walau ada catatan */
+.roles .role { display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+.role .role-catatan { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--accent); }
+.role .role-catatan.netral { color: var(--muted); font-weight: 500; }
+.ucard .tugas-peran { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
 /* Form Sahkan: cek sisa anggaran per MAK */
 .cek-anggaran { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
 .cek-anggaran-kepala { display: flex; flex-direction: column; gap: 2px; }

@@ -4,6 +4,7 @@
  * Pratinjau & cetak "Lembar Dokumen Belanja" (kertas A4).
  * Lembar dirender di atas halaman; saat dicetak hanya lembar ini yang ikut (lihat @media print di globals.css).
  * Setiap kali tombol Cetak ditekan, aksinya dicatat di Riwayat Aktivitas.
+ * PPK boleh lebih dari satu akun: penanda tangan dipilih di bar pratinjau (bawaan: PPK pertama menurut nama).
  */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -19,6 +20,9 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
   const [waktuCetak] = useState(sekarang);
   /** riwayat lengkap dokumen dari database (null = sedang dimuat) */
   const [riwayat, setRiwayat] = useState<Aktivitas[] | null>(null);
+  const daftarPpk = pengguna.filter((u) => u.peran === "PPK" && u.aktif && !u.dihapus).sort((a, b) => a.nama.localeCompare(b.nama, "id"));
+  /** id PPK penanda tangan; "" = tanpa nama (titik-titik) */
+  const [idPpk, setIdPpk] = useState(() => daftarPpk[0]?.id ?? "");
 
   useEffect(() => {
     let batal = false;
@@ -43,7 +47,7 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
   if (!siap) return null;
 
   const pembuat = infoPengguna(k.dibuatOleh);
-  const ppk = pengguna.find((u) => u.peran === "PPK" && u.aktif && !u.dihapus);
+  const ppk = daftarPpk.find((u) => u.id === idPpk);
   const jenis = jenisBelanjaDariAkun(k.akun);
   const namaJenis = JENIS_BELANJA.find((j) => j.kode === jenis)?.nama ?? "-";
   const namaDana = referensi.dana.find((d) => d.kode === k.dana)?.nama;
@@ -73,6 +77,19 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
           <span>{k.id} · kertas A4</span>
         </div>
         <div className="tbar">
+          {daftarPpk.length > 1 && (
+            <label className="pilih-ppk">
+              <span>PPK</span>
+              <select value={idPpk} onChange={(e) => setIdPpk(e.target.value)} aria-label="PPK penanda tangan">
+                {daftarPpk.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nama}
+                  </option>
+                ))}
+                <option value="">Tanpa nama</option>
+              </select>
+            </label>
+          )}
           <button type="button" className="btn soft sm" onClick={onClose}>
             Tutup
           </button>

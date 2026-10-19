@@ -3,7 +3,7 @@
 /**
  * Modul Pencairan
  * - Daftar : kegiatan dari bagian pengadaan yang belum dicairkan (ceklist).
- *            Operator Keuangan (juga Bendahara Pengeluaran / Administrator) mencentang kegiatan yang
+ *            Operator Pencairan (satu akun; juga Administrator) mencentang kegiatan yang
  *            dibayarkan ke penyedia / pihak ketiga lalu klik "Cairkan".
  * - Riwayat: tabel rekapan pencairan (Pencairan 01, 02, …: tanggal, sumber dana, nominal). Tombol aksi
  *            "Lihat daftar" mengganti tabel dengan daftar kegiatan yang sudah dicairkan pada rekap itu.

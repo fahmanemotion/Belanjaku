@@ -15,7 +15,7 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 
 ```
 Belanja                         Pencairan                            Pengesahan
-(Operator Pengadaan)            (Operator Keuangan)                  (Operator Pengesahan)
+(Operator Pengadaan)            (Operator Pencairan)                 (Operator Pengesahan)
 catat kegiatan          ──▶     Daftar: centang → Cairkan     ──▶    Daftar: centang → Sahkan
                                 Riwayat Pencairan                    Riwayat Pengesahan
 status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: Disahkan (SAH-2026-…)
@@ -24,9 +24,9 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 1. **Belanja** — bagian pengadaan barang/jasa mencatat semua dokumen belanja kebutuhan unit kerja di satu tempat
    (boleh beberapa operator sekaligus, untuk unit kerja mana pun). Dokumen yang tersimpan **langsung masuk Daftar Pencairan**.
    Dokumen hanya bisa diubah / dihapus oleh **pencatatnya** dan hanya **selama belum dicairkan**.
-   Kolom **Nilai** langsung berformat ribuan saat diketik (*5.000.000*) dan menampilkan terbilangnya. Nilai dokumen
-   **tidak dibatasi sisa anggaran** MAK di FA Detail (bila melebihi, form hanya memberi catatan).
-2. **Pencairan** — Operator Keuangan membuka **Daftar** Pencairan, **mencentang** kegiatan yang dibayarkan ke
+   Kolom **Nilai** langsung berformat ribuan saat diketik (*5.000.000*) dan menampilkan terbilangnya. Pencatatan belanja
+   **tidak dipengaruhi sisa anggaran** MAK di FA Detail — tanpa pembatasan maupun notifikasi.
+2. **Pencairan** — Operator Pencairan membuka **Daftar** Pencairan, **mencentang** kegiatan yang dibayarkan ke
    penyedia/pihak ketiga (kotak centang per baris, centang satu halaman, atau *Pilih semua*; jumlah & total tampil di
    bar ceklist bawah), lalu klik **Cairkan** (isi tanggal, jenis pembayaran LS/GU/TUP, No. SP2D/SPM bila ada).
    Kegiatan terpilih hilang dari Daftar, pindah ke **Riwayat Pencairan** sebagai histori kegiatan yang dibayarkan,
@@ -36,7 +36,7 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
    sebelum tanggal pencairan. **Di sinilah sisa anggaran berlaku**: form Sahkan menampilkan *Sisa anggaran per MAK* dan
    tombol Sahkan terkunci bila total kegiatan terpilih pada suatu MAK melebihi sisanya (lihat *Sisa anggaran saat pengesahan*).
 
-- Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
+- Administrator boleh mencairkan maupun mengesahkan. Operator Pencairan dan Operator Pengesahan masing-masing **hanya satu akun aktif**.
 - Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**. Daftar punya tab
   **Semua / RM / BLU**; bila yang dicentang campuran RM dan BLU, aplikasi otomatis membuat satu rekap untuk setiap sumber dana.
 - **Riwayat** menampilkan **tabel rekapan**: Uraian (mis. *Pencairan 01*, *Pengesahan 01*), tanggal, sumber dana, dan nominal.
@@ -74,7 +74,7 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja<br>(4 dan 5: **jalankan sekali** lewat SQL Editor, boleh sekaligus dalam satu tempelan — lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -94,12 +94,16 @@ barunya di-push:
   pencairan, dan memberi Administrator izin mencairkan & mengesahkan.
 - `20261019150000_sisa_anggaran_saat_pengesahan.sql` melepas batas sisa anggaran saat mencatat/mengubah belanja, memasang
   pemeriksaan sisa anggaran per MAK di `buat_rekap_pengesahan`, dan menambah RPC baca `cek_anggaran_pengesahan`.
+- `20261019160000_peran_baru_tanpa_unit.sql` mengganti nama **Operator Keuangan → Operator Pencairan**, menghapus peran
+  PPSPM & Bendahara Pengeluaran (akun yang masih memakainya dialihkan ke Manajemen), menambah **Pejabat Pengadaan** dan
+  **Manajemen**, membatasi Operator Pencairan & Operator Pengesahan **satu akun aktif**, dan mengosongkan unit kerja pengguna.
+  File ini berhenti sendiri (tanpa mengubah apa pun) bila sudah ada dua akun aktif untuk salah satu peran tersebut.
 
 ### Langkah pertama (sekali saja, di dashboard Supabase)
 
 1. **Buat akun Administrator pertama** — *Authentication → Users → Add user → Create new user*.
    Isi email & kata sandi, **centang _Auto Confirm User_**, lalu *Create user*.
-   Akun pertama otomatis menjadi **Administrator** (unit UK01). Nama awal diambil dari email; ubah di modul **Pengguna**.
+   Akun pertama otomatis menjadi **Administrator**. Nama awal diambil dari email; ubah di modul **Pengguna**.
 2. **Matikan pendaftaran publik** — *Authentication → Sign In / Providers*, bagian *User Signups*:
    matikan **Allow new users to sign up** → *Save changes*.
    Akun berikutnya dibuat dari modul **Pengguna** di aplikasi.
@@ -151,12 +155,19 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 
 | Peran | Modul yang terbuka | Yang bisa dilakukan |
 |---|---|---|
-| Operator Pengadaan | Dashboard, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja |
-| Operator Keuangan | Semua kecuali Pengguna | **Pencairan**: centang kegiatan → Cairkan; batalkan rekap pencairan |
-| Operator Pengesahan | Semua kecuali Pengguna | **Pengesahan**: centang kegiatan yang sudah dicairkan → Sahkan; batalkan rekap pengesahan |
-| Bendahara Pengeluaran | Semua kecuali Pengguna | Pencairan **dan** pengesahan |
-| PPK, PPSPM | Semua kecuali Pengguna | Memantau dokumen belanja, pencairan, pengesahan, dan riwayat aktivitas (hanya melihat) |
-| Administrator | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, pencairan **dan** pengesahan, **upload FA Detail** |
+| Peran | Jumlah akun | Modul yang terbuka | Yang bisa dilakukan |
+|---|---|---|---|
+| Operator Pengadaan | boleh banyak | Dashboard, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja |
+| Operator Pencairan | **1 akun aktif** | Semua kecuali Pengguna | **Pencairan**: centang kegiatan → Cairkan; batalkan rekap pencairan |
+| Operator Pengesahan | **1 akun aktif** | Semua kecuali Pengguna | **Pengesahan**: centang kegiatan yang sudah dicairkan → Sahkan; batalkan rekap pengesahan |
+| Pejabat Pengadaan | boleh banyak | Semua kecuali Pengguna | Memantau dokumen belanja, pencairan, pengesahan, dan riwayat aktivitas (hanya melihat) |
+| PPK | boleh banyak | Semua kecuali Pengguna | Memantau (hanya melihat); nama PPK dipilih sebagai penanda tangan saat mencetak lembar dokumen belanja |
+| Manajemen | boleh banyak | Semua kecuali Pengguna | Memantau (hanya melihat) |
+| Administrator | boleh banyak (minimal 1) | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, pencairan **dan** pengesahan, **upload FA Detail** |
+
+- Pengguna hanya dibedakan menurut **peran**; akun pengguna **tidak terikat unit kerja** (unit kerja tetap diisi pada dokumen belanja).
+- Akun aktif kedua untuk Operator Pencairan / Operator Pengesahan ditolak (form Pengguna menandai peran yang sudah dipakai;
+  database juga menolak). Untuk mengganti operator, nonaktifkan atau ubah peran akun lama lebih dulu.
 
 - Aturan tampilan ada di **`lib/akses.ts`** (tabel `AKSES`); aturan yang sama tersimpan di database (tabel **`izin_peran`**)
   dan dipakai RLS serta fungsi RPC. Bila pembagian tugas berubah, ubah **keduanya**.
@@ -285,5 +296,6 @@ belanjaku-pip/
 | *"Akun ini nonaktif"* | Akun dinonaktifkan Administrator; aktifkan lagi di modul Pengguna. |
 | Data tidak muncul setelah upload FA Detail | Pastikan file `.xlsx` hasil SAKTI *FA Detail 16 Segmen* dan hasil validasi tidak berisi galat. |
 | *"Database belum diperbarui ke versi aplikasi ini"* | Migrasi terbaru belum dijalankan di Supabase. Jalankan file migrasi yang belum ada (urut nama file) di SQL Editor. |
-| Kotak centang / tombol **Cairkan** tidak muncul | Peran Anda hanya melihat. Pencairan: Operator Keuangan, Bendahara Pengeluaran, Administrator. |
-| Kotak centang / tombol **Sahkan** tidak muncul | Pengesahan: Operator Pengesahan, Bendahara Pengeluaran, Administrator. |
+| Kotak centang / tombol **Cairkan** tidak muncul | Peran Anda hanya melihat. Pencairan: Operator Pencairan, Administrator. |
+| Kotak centang / tombol **Sahkan** tidak muncul | Pengesahan: Operator Pengesahan, Administrator. |
+| *"Peran … hanya boleh satu akun aktif"* | Operator Pencairan / Operator Pengesahan sudah dipegang akun lain. Nonaktifkan atau ubah peran akun itu dulu. |

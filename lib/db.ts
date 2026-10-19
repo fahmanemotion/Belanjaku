@@ -124,7 +124,6 @@ interface BarisPengguna {
   nama: string;
   email: string;
   peran: Peran;
-  unit: string | null;
   aktif: boolean;
   deleted_at: string | null;
 }
@@ -134,7 +133,6 @@ export const kePengguna = (r: BarisPengguna): Pengguna => ({
   nama: r.nama,
   email: r.email,
   peran: r.peran,
-  unit: r.unit ?? "",
   aktif: r.aktif && !r.deleted_at,
   dihapus: Boolean(r.deleted_at),
 });
@@ -188,7 +186,7 @@ export async function muatRekap(sb: SupabaseClient): Promise<Rekap[]> {
 }
 
 export async function muatPengguna(sb: SupabaseClient): Promise<Pengguna[]> {
-  const { data, error } = await sb.from("pengguna").select("id, nama, email, peran, unit, aktif, deleted_at").order("nama");
+  const { data, error } = await sb.from("pengguna").select("id, nama, email, peran, aktif, deleted_at").order("nama");
   if (error) throw error;
   return (data as BarisPengguna[]).map(kePengguna);
 }

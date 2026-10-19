@@ -40,13 +40,8 @@ export default function Belanja() {
   const [dicetak, setDicetak] = useState<Kegiatan | null>(null);
 
   const bisaBuat = boleh("belanja.buat");
-  const semuaUnit = boleh("belanja.lihatSemua");
-
-  // Tanpa izin "lihat semua" hanya dokumen unitnya sendiri yang tampil
-  const terlihat = useMemo(
-    () => (semuaUnit ? kegiatan : kegiatan.filter((k) => k.unit === penggunaAktif.unit)),
-    [kegiatan, semuaUnit, penggunaAktif.unit],
-  );
+  // Semua peran melihat seluruh dokumen belanja (pengguna tidak terikat unit kerja)
+  const terlihat = kegiatan;
   const dengan = (s: StatusBelanja) => terlihat.filter((k) => k.status === s);
   const nilai = (xs: Kegiatan[]) => xs.reduce((a, k) => a + k.nilai, 0);
 
@@ -100,7 +95,6 @@ export default function Belanja() {
 
   // Keterangan hak akses di atas tabel
   const keterangan = [
-    !semuaUnit && `Menampilkan dokumen ${namaUnit(penggunaAktif.unit)}.`,
     bisaBuat
       ? "Catat dokumen belanja untuk unit kerja mana pun; edit & hapus hanya untuk dokumen catatan Anda yang belum dicairkan."
       : "Anda dapat melihat dan mencetak dokumen belanja yang dicatat bagian pengadaan.",
@@ -321,14 +315,12 @@ function KonfirmasiHapus({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
 
 /* ---------- Form catat dokumen belanja / ubah dokumen ---------- */
 function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () => void; onSaved: () => void }) {
-  const { referensi, tambahKegiatan, editKegiatan, boleh, penggunaAktif, daftarMak, cariMak, toast } = useStore();
-  // Peran tanpa izin "lihat semua" hanya boleh mencatat untuk unitnya sendiri
-  const unitSendiri = !boleh("belanja.lihatSemua");
+  const { referensi, tambahKegiatan, editKegiatan, daftarMak, toast } = useStore();
   const [uraian, setUraian] = useState(awal?.uraian ?? "");
   const [jenisDokumen, setJenisDokumen] = useState<JenisDokumen | "">(awal?.jenisDokumen ?? "Kwitansi");
   const [noDokumen, setNoDokumen] = useState(awal?.noDokumen ?? "");
   const [penyedia, setPenyedia] = useState(awal?.penyediaId ?? "");
-  const [unit, setUnit] = useState(awal?.unit ?? (unitSendiri ? penggunaAktif.unit : ""));
+  const [unit, setUnit] = useState(awal?.unit ?? "");
   const [dana, setDana] = useState<SumberDana | "">(awal?.dana ?? "");
   const [mak, setMak] = useState(awal?.mak ?? "");
   const [nilai, setNilai] = useState(awal ? String(awal.nilai) : "");
@@ -341,9 +333,7 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
   const opsiPenyedia: OpsiCombo[] = referensi.penyedia
     .filter((p) => p.aktif || p.id === awal?.penyediaId)
     .map((p) => ({ value: p.id, label: p.aktif ? p.nama : `${p.nama} (tidak aktif)` }));
-  const opsiUnit: OpsiCombo[] = referensi.unit
-    .filter((u) => !unitSendiri || u.kode === penggunaAktif.unit)
-    .map((u) => ({ value: u.kode, label: u.nama }));
+  const opsiUnit: OpsiCombo[] = referensi.unit.map((u) => ({ value: u.kode, label: u.nama }));
   const opsiDana: OpsiCombo[] = referensi.dana
     .filter((d) => d.kode === "RM" || d.kode === "BLU")
     .map((d) => ({ value: d.kode, label: d.kode }));
@@ -353,10 +343,8 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
     () => (dana ? daftarMak.filter((m) => akunSesuaiDana(m.akun, dana)).map((m) => ({ value: m.kode, label: m.kode, mono: true })) : []),
     [dana, daftarMak],
   );
+  // Nilai tidak dibatasi sisa anggaran MAK (sisa anggaran baru berlaku saat pengesahan)
   const n = Number(nilai);
-  // Sisa anggaran MAK hanya sebagai informasi; batasnya baru berlaku saat pengesahan
-  const infoMak = mak ? cariMak(mak) : undefined;
-  const lewatSisa = infoMak !== undefined && n > 0 && n > infoMak.sisa;
   const kalimatNilai = n > 0 ? terbilang(n) : "";
 
   const gantiDana = (d: string) => {
@@ -419,7 +407,7 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
       description={
         awal
           ? "Dokumen masih bisa diubah selama belum dicairkan. Setiap perubahan tercatat di Riwayat Aktivitas beserta nilai sebelum dan sesudahnya."
-          : "Isi rincian dokumen belanja kebutuhan unit kerja. Setelah disimpan, dokumen langsung masuk Daftar Pencairan; hanya Anda yang dapat mengubah atau menghapusnya selama belum dicairkan. Sisa anggaran MAK diperiksa saat pengesahan."
+          : "Isi rincian dokumen belanja kebutuhan unit kerja. Setelah disimpan, dokumen langsung masuk Daftar Pencairan; hanya Anda yang dapat mengubah atau menghapusnya selama belum dicairkan."
       }
       submitLabel={awal ? "Simpan Perubahan" : "Simpan Dokumen"}
       onSubmit={simpan}
@@ -460,15 +448,6 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
       <Field label="Tanggal dokumen">
         <input type="date" value={tgl} onChange={(e) => setTgl(e.target.value)} />
       </Field>
-      {infoMak && lewatSisa && (
-        <p className="full catatan-sisa" role="status">
-          <Icon name="info" />
-          <span>
-            Nilai melebihi sisa anggaran MAK di FA Detail (<b className="num">{rupiah(infoMak.sisa)}</b>). Dokumen tetap bisa disimpan dan dicairkan;
-            sisa anggaran baru diperiksa saat pengesahan.
-          </span>
-        </p>
-      )}
       {awal && (
         <Field label="Catatan perubahan (opsional)" full>
           <textarea rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="mis. Penyesuaian harga sesuai penawaran akhir" />

@@ -182,9 +182,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Akun yang sedang masuk: cukup avatar + nama; menu berisi peran, unit, dan tombol keluar */
+/** Akun yang sedang masuk: cukup avatar + nama; menu berisi peran, tugas, dan tombol keluar */
 function MenuAkun({ onKeluar }: { onKeluar: () => void }) {
-  const { penggunaAktif, namaUnit } = useStore();
+  const { penggunaAktif } = useStore();
   const [buka, setBuka] = useState(false);
   const [gantiSandi, setGantiSandi] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -227,10 +227,6 @@ function MenuAkun({ onKeluar }: { onKeluar: () => void }) {
             </span>
           </div>
           <dl className="menu-info">
-            <div>
-              <dt>Unit</dt>
-              <dd>{penggunaAktif.unit ? namaUnit(penggunaAktif.unit) : "-"}</dd>
-            </div>
             <div>
               <dt>Tugas</dt>
               <dd>{AKSES[penggunaAktif.peran]?.tugas}</dd>

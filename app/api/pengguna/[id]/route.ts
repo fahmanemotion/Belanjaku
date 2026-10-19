@@ -1,5 +1,5 @@
 /**
- * PATCH  /api/pengguna/:id — ubah nama, email, peran, unit, status aktif (nonaktif = akun login diblokir)
+ * PATCH  /api/pengguna/:id — ubah nama, email, peran, status aktif (nonaktif = akun login diblokir)
  * DELETE /api/pengguna/:id — hapus akun login; profil disimpan agar riwayat tetap terbaca
  * Hanya Administrator (header Authorization: Bearer <access token>).
  */
@@ -10,6 +10,7 @@ import {
   PERAN_VALID,
   bacaJson,
   galatRpc,
+  periksaSatuAkun,
   supabaseAdmin,
   tangani,
   teks,
@@ -39,13 +40,13 @@ export async function PATCH(req: Request, ctx: Konteks) {
     if (!EMAIL_VALID.test(email)) throw new GalatApi(400, "Format email tidak valid");
     const peran = b.peran as Peran;
     if (!PERAN_VALID.includes(peran)) throw new GalatApi(400, "Peran tidak dikenal");
-    const unit = typeof b.unit === "string" ? b.unit.trim() : "";
     if (typeof b.aktif !== "boolean") throw new GalatApi(400, "Status aktif tidak valid");
     const aktif = b.aktif;
 
     const sb = supabaseAdmin();
     const { data: lama } = await sb.from("pengguna").select("auth_id, email, aktif").eq("id", id).is("deleted_at", null).maybeSingle();
     if (!lama) throw new GalatApi(404, "Pengguna tidak ditemukan");
+    if (aktif) await periksaSatuAkun(sb, peran, id);
 
     // 1. email login diganti lebih dulu (gagal bila email sudah dipakai akun lain)
     const gantiEmail = lama.auth_id && email !== lama.email;
@@ -60,7 +61,7 @@ export async function PATCH(req: Request, ctx: Konteks) {
       p_nama: nama,
       p_email: email,
       p_peran: peran,
-      p_unit: unit || null,
+      p_unit: null, // pengguna tidak terikat unit kerja
       p_aktif: aktif,
     });
     if (error) {

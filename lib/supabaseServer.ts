@@ -4,6 +4,7 @@
  * (tanpa awalan NEXT_PUBLIC_) dan di .env.local komputer pengembang.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { PERAN, PERAN_SATU_AKUN } from "./data";
 import type { Peran } from "./types";
 
 export class GalatApi extends Error {
@@ -74,7 +75,21 @@ export async function bacaJson(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
-export const PERAN_VALID: Peran[] = ["Administrator", "Operator Pengadaan", "Operator Keuangan", "Operator Pengesahan", "Bendahara Pengeluaran", "PPK", "PPSPM"];
+export const PERAN_VALID: Peran[] = PERAN;
+
+/**
+ * Operator Pencairan & Operator Pengesahan hanya boleh satu akun aktif.
+ * Diperiksa sebelum akun login dibuat/diubah agar pesannya jelas (database juga menolak).
+ */
+export async function periksaSatuAkun(sb: SupabaseClient, peran: Peran, kecualiId?: string) {
+  if (!PERAN_SATU_AKUN.includes(peran)) return;
+  let q = sb.from("pengguna").select("id, nama").eq("peran", peran).eq("aktif", true).is("deleted_at", null).limit(1);
+  if (kecualiId) q = q.neq("id", kecualiId);
+  const { data, error } = await q;
+  if (error) throw new GalatApi(400, error.message);
+  if (data && data.length > 0)
+    throw new GalatApi(409, `Peran ${peran} hanya boleh satu akun aktif dan saat ini dipakai ${data[0].nama}. Nonaktifkan atau ubah peran akun tersebut lebih dulu.`);
+}
 export const EMAIL_VALID = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function teks(v: unknown, nama: string, min = 1, maks = 200): string {

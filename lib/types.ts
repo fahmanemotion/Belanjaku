@@ -131,19 +131,18 @@ export interface Aktivitas {
 export type Peran =
   | "Administrator"
   | "Operator Pengadaan"
-  | "Operator Keuangan"
+  | "Operator Pencairan"
   | "Operator Pengesahan"
-  | "Bendahara Pengeluaran"
+  | "Pejabat Pengadaan"
   | "PPK"
-  | "PPSPM";
+  | "Manajemen";
 
 export interface Pengguna {
   id: string;
   nama: string;
   email: string;
+  /** pengguna hanya dibedakan menurut peran (tidak terikat unit kerja) */
   peran: Peran;
-  /** unit kerja asal pengguna (boleh kosong: tidak terikat unit) */
-  unit: string;
   aktif: boolean;
   /** profil akun yang sudah dihapus (tetap disimpan agar riwayat terbaca) */
   dihapus?: boolean;

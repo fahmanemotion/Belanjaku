@@ -5,12 +5,13 @@
  *
  * Alur kegiatan (dokumen belanja):
  *   Belanja    : bagian pengadaan mencatat kegiatan                                  → Belum dicairkan
- *   Pencairan  : Operator Keuangan mencentang kegiatan yang dibayarkan ke penyedia /
+ *   Pencairan  : Operator Pencairan mencentang kegiatan yang dibayarkan ke penyedia /
  *                pihak ketiga (ceklist bar) lalu klik "Cairkan". Kegiatan hilang dari
  *                Daftar Pencairan, pindah ke Riwayat Pencairan, dan masuk Daftar Pengesahan → Dicairkan
  *   Pengesahan : Operator Pengesahan mencentang kegiatan yang sudah dicairkan lalu klik
  *                "Sahkan". Kegiatan pindah ke Riwayat Pengesahan                        → Disahkan
- * Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
+ * Administrator boleh mencairkan maupun mengesahkan. Operator Pencairan dan Operator Pengesahan
+ * masing-masing hanya satu akun aktif.
  *
  * Riwayat menampilkan tabel rekapan (Uraian "Pencairan 01", tanggal, sumber dana, nominal); tombol aksi
  * "Lihat daftar" mengganti tabel itu dengan daftar kegiatan yang sudah dicairkan / disahkan pada rekap tersebut.
@@ -82,7 +83,7 @@ const KONFIG: Record<JenisRekap, Konfig> = {
     proses: "pencairan",
     daftar: "Daftar Pencairan",
     riwayat: "Riwayat Pencairan",
-    pelaku: "Pencairan dilakukan oleh Operator Keuangan, Bendahara Pengeluaran, atau Administrator.",
+    pelaku: "Pencairan dilakukan oleh Operator Pencairan atau Administrator.",
     labelTanggal: "Tanggal pencairan",
     labelRef: "No. SP2D / SPM (opsional)",
     refSingkat: "No. SP2D / SPM",
@@ -100,7 +101,7 @@ const KONFIG: Record<JenisRekap, Konfig> = {
     proses: "pengesahan",
     daftar: "Daftar Pengesahan",
     riwayat: "Riwayat Pengesahan",
-    pelaku: "Pengesahan dilakukan oleh Operator Pengesahan, Bendahara Pengeluaran, atau Administrator.",
+    pelaku: "Pengesahan dilakukan oleh Operator Pengesahan atau Administrator.",
     labelTanggal: "Tanggal pengesahan",
     labelRef: "No. dokumen pengesahan (opsional)",
     refSingkat: "No. dokumen pengesahan",
@@ -130,7 +131,7 @@ export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
   const { kegiatan, rekap, boleh } = useStore();
-  // Pencairan: Operator Keuangan; Pengesahan: Operator Pengesahan; Bendahara & Administrator: keduanya
+  // Pencairan: Operator Pencairan; Pengesahan: Operator Pengesahan; Administrator: keduanya
   const bisa = boleh(K.izin);
 
   // Pencairan: belum dicairkan. Pengesahan: sudah dicairkan, belum disahkan.

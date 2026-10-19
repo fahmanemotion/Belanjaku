@@ -4,12 +4,11 @@
  * Satu-satunya tempat untuk mengatur siapa boleh membuka modul apa dan melakukan aksi apa.
  * Ubah tabel AKSES di bawah bila pembagian tugas di PIP Makassar berbeda.
  *
- * Alur dokumen & pelakunya:
- *   Operator Pengadaan  : mencatat dokumen belanja untuk unit kerja mana pun            (→ Belum dicairkan)
- *   Operator Keuangan   : mencentang belanja di Daftar Pencairan → Cairkan             (→ Dicairkan)
- *   Operator Pengesahan : mencentang belanja yang sudah dicairkan → Sahkan             (→ Disahkan)
- *   Bendahara Pengeluaran: boleh mencairkan dan mengesahkan
- *   PPK, PPSPM          : memantau dokumen, pencairan, dan pengesahan
+ * Alur dokumen & pelakunya (pengguna hanya dibedakan menurut peran, tidak terikat unit kerja):
+ *   Operator Pengadaan  : mencatat dokumen belanja untuk unit kerja mana pun   (→ Belum dicairkan) — boleh banyak akun
+ *   Operator Pencairan  : mencentang belanja di Daftar Pencairan → Cairkan    (→ Dicairkan)       — satu akun aktif
+ *   Operator Pengesahan : mencentang belanja yang sudah dicairkan → Sahkan    (→ Disahkan)        — satu akun aktif
+ *   Pejabat Pengadaan, PPK, Manajemen : memantau dokumen, pencairan, dan pengesahan
  *   Administrator       : kelola pengguna & referensi; boleh mencatat, mencairkan, dan mengesahkan
  *
  * Login memakai Supabase Auth. Izin aksi yang SAMA juga tersimpan di database (tabel izin_peran)
@@ -23,7 +22,7 @@ export type Modul = "dashboard" | "belanja" | "aktivitas" | "pencairan" | "penge
 export type Izin =
   /** mencatat dokumen belanja baru; ubah & hapus dokumen catatan sendiri selama belum dicairkan */
   | "belanja.buat"
-  /** melihat dokumen belanja semua unit (tanpa izin ini hanya unit sendiri) */
+  /** melihat semua dokumen belanja (saat ini dimiliki semua peran) */
   | "belanja.lihatSemua"
   /** mencentang belanja lalu membuat / membatalkan rekap pencairan */
   | "pencairan.rekap"
@@ -33,7 +32,7 @@ export type Izin =
   | "referensi.kelola"
   /** menambah, mengubah, menonaktifkan, menghapus pengguna */
   | "pengguna.kelola"
-  /** melihat seluruh riwayat aktivitas (tanpa izin ini: aktivitas sendiri & dokumen unitnya) */
+  /** melihat seluruh riwayat aktivitas (tanpa izin ini: aktivitas sendiri & aktivitas dokumen belanja) */
   | "aktivitas.semua"
   /** mengunggah FA Detail SAKTI untuk memperbarui Kertas Kerja POK */
   | "pok.unggah";
@@ -65,7 +64,7 @@ export const AKSES: Record<Peran, AturanPeran> = {
     izin: ["belanja.buat", "belanja.lihatSemua", "pok.unggah"],
     tugas: "Catat dokumen belanja kebutuhan unit kerja; unggah FA Detail",
   },
-  "Operator Keuangan": {
+  "Operator Pencairan": {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
     izin: ["belanja.lihatSemua", "pencairan.rekap", "aktivitas.semua"],
     tugas: "Centang belanja lalu cairkan (bayar ke penyedia / pihak ketiga)",
@@ -75,17 +74,17 @@ export const AKSES: Record<Peran, AturanPeran> = {
     izin: ["belanja.lihatSemua", "pengesahan.sahkan", "aktivitas.semua"],
     tugas: "Centang belanja yang sudah dicairkan lalu sahkan",
   },
-  "Bendahara Pengeluaran": {
+  "Pejabat Pengadaan": {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
-    izin: ["belanja.lihatSemua", "pencairan.rekap", "pengesahan.sahkan", "aktivitas.semua"],
-    tugas: "Mencairkan dan mengesahkan belanja",
+    izin: ["belanja.lihatSemua", "aktivitas.semua"],
+    tugas: "Pantau dokumen belanja, pencairan, dan pengesahan",
   },
   PPK: {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
     izin: ["belanja.lihatSemua", "aktivitas.semua"],
     tugas: "Pantau dokumen belanja, pencairan, dan pengesahan",
   },
-  PPSPM: {
+  Manajemen: {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
     izin: ["belanja.lihatSemua", "aktivitas.semua"],
     tugas: "Pantau dokumen belanja, pencairan, dan pengesahan",

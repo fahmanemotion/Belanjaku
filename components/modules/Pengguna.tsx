@@ -4,22 +4,30 @@ import { useState } from "react";
 import Icon from "@/components/Icon";
 import { useStore } from "@/components/StoreProvider";
 import { Badge, Field, Modal, PageHead, SearchBox, Status, type Tone } from "@/components/ui";
-import type { Pengguna as TPengguna } from "@/lib/types";
-
-import { PERAN } from "@/lib/data";
+import { AKSES } from "@/lib/akses";
+import { PERAN, PERAN_SATU_AKUN } from "@/lib/data";
 import { inisial } from "@/lib/format";
-import type { Peran } from "@/lib/types";
+import type { Peran, Pengguna as TPengguna } from "@/lib/types";
 
-/** Warna badge per peran: admin biru, pengadaan netral, keuangan hijau, pengesahan ungu, pejabat pemantau kuning */
+/** Warna badge per peran: admin biru, pengadaan netral, pencairan hijau, pengesahan ungu, pejabat pemantau kuning */
 const TONE_PERAN: Record<Peran, Tone> = {
   Administrator: "i",
   "Operator Pengadaan": "",
-  "Operator Keuangan": "g",
+  "Operator Pencairan": "g",
   "Operator Pengesahan": "p",
-  "Bendahara Pengeluaran": "g",
+  "Pejabat Pengadaan": "w",
   PPK: "w",
-  PPSPM: "w",
+  Manajemen: "",
 };
+
+/**
+ * Pengguna hanya dibedakan menurut peran (tidak terikat unit kerja).
+ * Operator Pencairan & Operator Pengesahan hanya boleh satu akun aktif; peran lain boleh banyak akun.
+ */
+const satuAkun = (r: Peran) => PERAN_SATU_AKUN.includes(r);
+/** Pemegang aktif peran satu-akun selain `kecuali` (untuk menandai pilihan peran yang sudah terisi) */
+const pemegang = (daftar: TPengguna[], r: Peran, kecuali?: string) =>
+  satuAkun(r) ? daftar.find((u) => u.peran === r && u.aktif && !u.dihapus && u.id !== kecuali) : undefined;
 
 /** Kata sandi acak yang mudah dibacakan: 3 huruf + 4 angka + 3 huruf, mis. "Kap7314rum" */
 function sandiAcak() {
@@ -30,7 +38,7 @@ function sandiAcak() {
 }
 
 export default function Pengguna() {
-  const { pengguna: semua, penggunaAktif, toggleAktifPengguna, hapusPengguna, namaUnit, toast } = useStore();
+  const { pengguna: semua, penggunaAktif, toggleAktifPengguna, hapusPengguna, toast } = useStore();
   /** Akun yang sedang masuk — tidak boleh menonaktifkan atau menghapus dirinya sendiri */
   const ID_AKUN_SAYA = penggunaAktif.id;
   const [akanDihapus, setAkanDihapus] = useState<TPengguna | null>(null);
@@ -74,8 +82,14 @@ export default function Pengguna() {
             aria-pressed={peran === r}
             style={{ textAlign: "left", outline: peran === r ? "2px solid var(--accent)" : undefined }}
           >
-            <b className="num">{pengguna.filter((u) => u.peran === r).length}</b>
+            {/* angka = akun aktif; akun nonaktif disebut terpisah */}
+            <b className="num">{pengguna.filter((u) => u.peran === r && u.aktif).length}</b>
             <p>{r}</p>
+            {(() => {
+              const nonaktif = pengguna.filter((u) => u.peran === r && !u.aktif).length;
+              const catatan = [satuAkun(r) && "Hanya 1 akun aktif", nonaktif > 0 && `${nonaktif} nonaktif`].filter(Boolean).join(" · ");
+              return catatan ? <small className={`role-catatan ${satuAkun(r) ? "" : "netral"}`}>{catatan}</small> : null;
+            })()}
           </button>
         ))}
       </div>
@@ -94,9 +108,7 @@ export default function Pengguna() {
               <Badge tone={TONE_PERAN[u.peran] ?? ""}>{u.peran}</Badge>
               <Status tone={u.aktif ? "g" : "m"}>{u.aktif ? "Aktif" : "Nonaktif"}</Status>
             </div>
-            <div className="meta">
-              <span>{u.unit ? namaUnit(u.unit) : "Tidak terikat unit"}</span>
-            </div>
+            <p className="tugas-peran">{AKSES[u.peran]?.tugas}</p>
             <div className="uaksi">
               <button type="button" className="btn soft sm" onClick={() => setAkanDiedit(u)} title={`Edit data ${u.nama}`}>
                 <Icon name="edit" />
@@ -162,7 +174,6 @@ export default function Pengguna() {
             <div><span>Nama</span><b>{akanDihapus.nama}</b></div>
             <div><span>Email</span><b>{akanDihapus.email}</b></div>
             <div><span>Peran</span><b>{akanDihapus.peran}</b></div>
-            <div><span>Unit kerja</span><b>{akanDihapus.unit ? namaUnit(akanDihapus.unit) : "-"}</b></div>
           </div>
         </Modal>
       )}
@@ -172,16 +183,17 @@ export default function Pengguna() {
 
 /** Form tambah pengguna; bila `awal` diisi, form menjadi form edit */
 function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna }) {
-  const { pengguna, penggunaAktif, referensi, tambahPengguna, ubahPengguna, toast } = useStore();
+  const { pengguna, penggunaAktif, tambahPengguna, ubahPengguna, toast } = useStore();
   const ID_AKUN_SAYA = penggunaAktif.id;
   const modeEdit = Boolean(awal);
   const akunSendiri = awal?.id === ID_AKUN_SAYA;
   const [nama, setNama] = useState(awal?.nama ?? "");
   const [email, setEmail] = useState(awal?.email ?? "");
   const [peran, setPeran] = useState<Peran>(awal?.peran ?? "Operator Pengadaan");
-  // Peran tidak lagi terikat unit kerja; unit hanya keterangan asal pengguna
-  const [unit, setUnit] = useState(awal ? awal.unit : "");
   const [aktif, setAktif] = useState(awal?.aktif ?? true);
+  // Peran satu-akun yang sudah dipegang akun aktif lain tidak bisa dipilih untuk akun aktif
+  // (akun nonaktif boleh disiapkan lebih dulu sebagai pengganti)
+  const terisi = pemegang(pengguna, peran, awal?.id);
   const [sandi, setSandi] = useState(() => (awal ? "" : sandiAcak()));
 
   const simpan = async () => {
@@ -194,15 +206,19 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
       toast("Email ini sudah dipakai pengguna lain");
       return;
     }
+    if (terisi && aktif) {
+      toast(`Peran ${peran} hanya boleh satu akun aktif dan saat ini dipakai ${terisi.nama}`);
+      return;
+    }
     if (awal) {
-      if (!(await ubahPengguna(awal.id, { nama: nama.trim(), email: em, peran, unit, aktif }))) return;
+      if (!(await ubahPengguna(awal.id, { nama: nama.trim(), email: em, peran, aktif }))) return;
       toast(`Data ${nama.trim()} diperbarui`);
     } else {
       if (sandi.length < 8 || !/[A-Za-z]/.test(sandi) || !/[0-9]/.test(sandi)) {
         toast("Kata sandi awal minimal 8 karakter dan berisi huruf serta angka");
         return;
       }
-      if (!(await tambahPengguna({ nama: nama.trim(), email: em, peran, unit, sandi }))) return;
+      if (!(await tambahPengguna({ nama: nama.trim(), email: em, peran, sandi }))) return;
       toast(`Pengguna ditambahkan · kata sandi awal: ${sandi}`);
     }
     onClose();
@@ -226,20 +242,22 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
       <Field label="Email dinas" full>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@pipmakassar.ac.id" required />
       </Field>
-      <Field label="Peran">
+      <Field label="Peran" full>
         <select value={peran} onChange={(e) => setPeran(e.target.value as Peran)} disabled={akunSendiri} title={akunSendiri ? "Peran akun Anda sendiri tidak bisa diubah" : undefined}>
-          {PERAN.map((r) => (
-            <option key={r}>{r}</option>
-          ))}
+          {PERAN.map((r) => {
+            const lain = pemegang(pengguna, r, awal?.id);
+            return (
+              <option key={r} value={r} disabled={Boolean(lain) && aktif && r !== awal?.peran}>
+                {r}
+                {satuAkun(r) ? (lain ? ` — sudah dipakai ${lain.nama}` : " (hanya 1 akun aktif)") : ""}
+              </option>
+            );
+          })}
         </select>
-      </Field>
-      <Field label="Unit kerja">
-        <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-          <option value="">Tidak terikat unit</option>
-          {referensi.unit.map((u) => (
-            <option key={u.kode} value={u.kode}>{u.nama}</option>
-          ))}
-        </select>
+        <small className="isian-catatan">
+          {AKSES[peran]?.tugas}
+          {satuAkun(peran) ? " · peran ini hanya boleh satu akun aktif" : ""}
+        </small>
       </Field>
       {!modeEdit && (
         <Field label="Kata sandi awal" full>

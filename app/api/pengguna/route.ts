@@ -9,6 +9,7 @@ import {
   PERAN_VALID,
   bacaJson,
   galatRpc,
+  periksaSatuAkun,
   sandiValid,
   supabaseAdmin,
   tangani,
@@ -29,12 +30,12 @@ export async function POST(req: Request) {
     if (!EMAIL_VALID.test(email)) throw new GalatApi(400, "Format email tidak valid");
     const peran = b.peran as Peran;
     if (!PERAN_VALID.includes(peran)) throw new GalatApi(400, "Peran tidak dikenal");
-    const unit = typeof b.unit === "string" ? b.unit.trim() : "";
     const sandi = sandiValid(b.sandi);
 
     const sb = supabaseAdmin();
     const { data: ada } = await sb.from("pengguna").select("id").eq("email", email).is("deleted_at", null).maybeSingle();
     if (ada) throw new GalatApi(409, "Email ini sudah dipakai pengguna lain");
+    await periksaSatuAkun(sb, peran);
 
     const { data: akun, error } = await sb.auth.admin.createUser({ email, password: sandi, email_confirm: true, user_metadata: { nama } });
     if (error || !akun.user) {
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
       p_nama: nama,
       p_email: email,
       p_peran: peran,
-      p_unit: unit || null,
+      p_unit: null, // pengguna tidak terikat unit kerja
     });
     if (e2) {
       await sb.auth.admin.deleteUser(akun.user.id); // batalkan akun login bila profil gagal dibuat

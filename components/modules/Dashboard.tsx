@@ -98,11 +98,10 @@ function Tile({
  * Total Belanja = belanja yang sudah dicairkan (termasuk yang sudah disahkan).
  */
 function KartuDana({ dana }: { dana: Dana }) {
-  const { kegiatan, daftarMak, referensi, boleh, penggunaAktif } = useStore();
-  const semuaUnit = boleh("belanja.lihatSemua");
+  const { kegiatan, daftarMak, referensi } = useStore();
   const namaDana = referensi.dana.find((d) => d.kode === dana)?.nama ?? (dana === "RM" ? "Rupiah Murni" : "PNBP BLU");
   const pagu = jumlah(daftarMak.filter((m) => m.dana === dana).map((m) => m.pagu));
-  const dok = kegiatan.filter((k) => k.dana === dana && (semuaUnit || k.unit === penggunaAktif.unit));
+  const dok = kegiatan.filter((k) => k.dana === dana);
   const nilai = (s: StatusBelanja) => jumlah(dok.filter((k) => k.status === s).map((k) => k.nilai));
   const hitung = (s: StatusBelanja) => dok.filter((k) => k.status === s).length;
   const pencairan = nilai("Dicairkan");
@@ -336,13 +335,8 @@ const NAMA_JENIS_BELANJA: Record<JenisBelanja, string> = {
 };
 
 function TabelKegiatan({ judul }: { judul: ReactNode }) {
-  const { kegiatan: semuaKegiatan, boleh, penggunaAktif, namaUnit } = useStore();
-  // Peran tanpa izin "lihat semua" hanya melihat kegiatan unitnya sendiri
-  const semuaUnit = boleh("belanja.lihatSemua");
-  const kegiatan = useMemo(
-    () => (semuaUnit ? semuaKegiatan : semuaKegiatan.filter((k) => k.unit === penggunaAktif.unit)),
-    [semuaKegiatan, semuaUnit, penggunaAktif.unit],
-  );
+  // Semua peran melihat seluruh kegiatan (pengguna tidak terikat unit kerja)
+  const { kegiatan } = useStore();
   const [sumber, setSumber] = useState<FilterSumber>("Semua");
   const [jenisBel, setJenisBel] = useState<FilterJenisBelanja>("Semua");
   const [dok, setDok] = useState<FilterDok>("Semua");
@@ -382,7 +376,7 @@ function TabelKegiatan({ judul }: { judul: ReactNode }) {
         <div>
           {judul}
           <p className="sub">
-            {jml(baris.length)} kegiatan{semuaUnit ? "" : ` · ${namaUnit(penggunaAktif.unit)}`} · total {rupiah(total)}
+            {jml(baris.length)} kegiatan · total {rupiah(total)}
             {sumber !== "Semua" && ` · ${sumber}`}
             {jenisBel !== "Semua" && ` · ${NAMA_JENIS_BELANJA[jenisBel]}`}
             {dok !== "Semua" && ` · ${dok}`}

@@ -3,7 +3,7 @@
 /**
  * State bersama seluruh modul, tersambung ke database Supabase.
  *
- * - Login: Supabase Auth (email + kata sandi). Profil, peran, dan unit dibaca dari tabel `pengguna`.
+ * - Login: Supabase Auth (email + kata sandi). Profil dan peran dibaca dari tabel `pengguna` (pengguna tidak terikat unit kerja).
  * - Membaca data: tabel/view Supabase yang dilindungi Row Level Security.
  * - Mengubah data: fungsi RPC di database (supabase/migrations) yang memeriksa peran, status dokumen,
  *   dan menulis Riwayat Aktivitas dalam satu transaksi. Pemeriksaan izin di sini hanya untuk tampilan.
@@ -92,7 +92,7 @@ interface StoreValue {
   cekAnggaran: (ids: string[]) => Promise<{ ok: true; data: AnggaranMak[] } | { ok: false; pesan: string }>;
 
   /* Pengguna (lewat API server) */
-  tambahPengguna: (p: { nama: string; email: string; peran: Peran; unit: string; sandi: string }) => Promise<boolean>;
+  tambahPengguna: (p: { nama: string; email: string; peran: Peran; sandi: string }) => Promise<boolean>;
   ubahPengguna: (id: string, data: Omit<Pengguna, "id" | "dihapus">) => Promise<boolean>;
   toggleAktifPengguna: (id: string) => Promise<boolean>;
   hapusPengguna: (id: string) => Promise<boolean>;
@@ -124,7 +124,7 @@ export function useStore(): StoreValue {
   return ctx;
 }
 
-const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Pengadaan", unit: "", aktif: false };
+const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Pengadaan", aktif: false };
 const REFERENSI_KOSONG: Referensi = { akun: [], unit: [], penyedia: [], dana: [] };
 
 /** Pesan galat login Supabase Auth dalam bahasa Indonesia */
@@ -210,7 +210,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
       const sb = supabase();
       const { data, error } = await sb
         .from("pengguna")
-        .select("id, nama, email, peran, unit, aktif, deleted_at")
+        .select("id, nama, email, peran, aktif, deleted_at")
         .eq("auth_id", authId)
         .maybeSingle();
       if (error) {
@@ -225,7 +225,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
         await sb.auth.signOut();
         return { ok: false, pesan: "Akun ini nonaktif. Hubungi Administrator." };
       }
-      const p: Pengguna = { id: data.id, nama: data.nama, email: data.email, peran: data.peran, unit: data.unit ?? "", aktif: true };
+      const p: Pengguna = { id: data.id, nama: data.nama, email: data.email, peran: data.peran, aktif: true };
       let izin: string[] = [];
       try {
         izin = await muatIzin(sb, p.peran);
@@ -539,7 +539,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   const toggleAktifPengguna: StoreValue["toggleAktifPengguna"] = async (id) => {
     const u = pengguna.find((x) => x.id === id);
     if (!u) return false;
-    return ubahPengguna(id, { nama: u.nama, email: u.email, peran: u.peran, unit: u.unit, aktif: !u.aktif });
+    return ubahPengguna(id, { nama: u.nama, email: u.email, peran: u.peran, aktif: !u.aktif });
   };
 
   const hapusPengguna: StoreValue["hapusPengguna"] = async (id) => {
