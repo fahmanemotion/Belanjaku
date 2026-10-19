@@ -1058,42 +1058,32 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .seg button.on .count.netral { background: color-mix(in srgb, var(--panel) 24%, transparent); color: var(--panel); }
 .info-rekap { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .info-rekap > .mono { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.judul-info-rekap { font-size: 13px; font-weight: 700; white-space: nowrap; }
 .info-rekap-sub { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .info-rekap-sub .mono { font-size: 11px; }
 .status-rekap { display: block; margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--ink); white-space: nowrap; }
-.rekap-daftar { display: grid; gap: 10px; }
-.rekap { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); transition: border-color 0.15s, box-shadow 0.15s; }
-.rekap.buka { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); box-shadow: 0 12px 30px -24px rgba(0, 0, 0, 0.45); }
-.rekap.baru { animation: sorot-rekap 2.6s ease-out; }
-@keyframes sorot-rekap { from { background: color-mix(in srgb, var(--good) 16%, var(--panel)); border-color: var(--good); } }
-.rekap-kepala { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 14px 16px; border-radius: 16px; text-align: left; color: var(--ink); }
-.rekap-kepala:hover { background: color-mix(in srgb, var(--sub) 50%, var(--panel)); }
-.rekap.buka .rekap-kepala { border-radius: 16px 16px 0 0; }
-.rk-nomor { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.rk-nomor b { font-size: 13.5px; font-weight: 700; }
-.rk-nomor small { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.rk-badge { flex: 0 0 auto; display: flex; gap: 6px; }
-.rk-sel { flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.rk-sel.sempit { flex: 0 0 58px; }
-.rk-sel small { font-size: 11px; font-weight: 500; color: var(--muted); }
-.rk-sel b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rk-sel b.mono { font-size: 12px; }
-.rk-sel b.kosong { color: var(--muted); font-weight: 500; }
-.rk-status { flex: 0 0 auto; min-width: 150px; }
-.rekap-chev { flex: none; width: 30px; height: 30px; margin-left: auto; border-radius: 50%; display: grid; place-items: center; background: var(--sub); color: var(--muted); transition: transform 0.15s, background 0.15s; }
-.rekap-chev svg { width: 16px; height: 16px; }
-.rekap.buka .rekap-chev { transform: rotate(180deg); background: var(--ink); color: var(--panel); }
-.rekap-isi { border-top: 1px dashed var(--line); padding: 14px 16px 16px; display: grid; gap: 12px; }
-.rekap-catatan { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 13px; }
-.rekap-catatan svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--muted); }
-.rekap-aksi { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
-.rekap-aksi .note { flex: 1 1 260px; }
-.rekap-kosong { display: grid; justify-items: center; gap: 8px; padding: 40px 16px; text-align: center; border: 1px dashed var(--line); border-radius: 16px; }
-.rekap-kosong > svg { width: 30px; height: 30px; color: var(--accent); }
-.rekap-kosong b { font-size: 15px; }
-.rekap-kosong p { margin: 0; max-width: 460px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.doc-chip.rapat { margin-left: 0; }
-.info-rekap-ref { font-family: var(--f-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* Tabel rekapan di Riwayat */
+.tabel-rekap { min-width: 760px; }
+.tabel-rekap tr.bisa-klik { cursor: pointer; }
+.tabel-rekap td.main { min-width: 260px; }
+.uraian-rekap { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.judul-rekap { display: inline-flex; align-items: center; gap: 8px; }
+.judul-rekap b { font-size: 14.5px; font-weight: 700; }
+.uraian-rekap small { font-size: 11.5px; color: var(--muted); }
+.uraian-rekap small .mono { font-size: 11px; }
+.status-rekap-baris .st { font-size: 11.5px; }
+.tabel-rekap td.aksi-rekap { white-space: nowrap; }
+.btn svg.kiri { transform: rotate(90deg); }
+/* Daftar kegiatan satu rekap */
+.kembali-rekap { margin-bottom: 14px; }
+.info-rekap-detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 20px; margin: 0 0 16px; padding: 14px 16px; border-radius: 16px; background: var(--sub); }
+.info-rekap-detail > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.info-rekap-detail > div.lebar { grid-column: 1 / -1; }
+.info-rekap-detail dt { font-size: 11.5px; color: var(--muted); }
+.info-rekap-detail dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.info-rekap-detail dd.mono { font-size: 12.5px; }
+.info-rekap-detail dd.kosong { color: var(--muted); font-weight: 500; }
+.info-rekap-detail dd small { flex-basis: 100%; font-size: 11.5px; font-weight: 500; color: var(--muted); }
 /* Form cairkan/sahkan: satu blok isian per sumber dana bila kegiatan terpilih campuran RM & BLU */
 .grup-rekap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
 .grup-rekap h4 { grid-column: 1 / -1; margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -1113,13 +1103,11 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .filter-kegiatan .tabs button { flex: 1; }
   .filter-kegiatan .seg.seg-sm { flex: 1 1 100%; grid-auto-columns: 1fr; }
   .grup-rekap { grid-template-columns: minmax(0, 1fr); }
-  .rekap-kepala { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; padding: 14px; }
-  .rk-nomor { grid-column: 1 / -1; padding-right: 44px; }
-  .rk-badge, .rk-status { grid-column: 1 / -1; }
-  .rk-status { min-width: 0; }
-  .rekap-chev { position: absolute; top: 14px; right: 14px; margin: 0; }
-  .rekap-isi { padding: 12px; }
-  .rekap-aksi .btn { width: 100%; }
+  .tw.stack .tabel-rekap td.main { min-width: 0; }
+  .tw.stack .tabel-rekap td.aksi-rekap { grid-column: 1 / -1; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .tw.stack .tabel-rekap td.aksi-rekap .btn { width: 100%; }
+  .kembali-rekap .btn { width: 100%; }
+  .info-rekap-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 12px 14px; }
 }
 
 /* ---------- Cetak: hanya lembar dokumen belanja yang ikut tercetak ---------- */

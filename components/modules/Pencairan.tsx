@@ -5,8 +5,9 @@
  * - Daftar : kegiatan dari bagian pengadaan yang belum dicairkan (ceklist).
  *            Operator Keuangan (juga Bendahara Pengeluaran / Administrator) mencentang kegiatan yang
  *            dibayarkan ke penyedia / pihak ketiga lalu klik "Cairkan".
- * - Riwayat: histori kegiatan yang sudah dicairkan (per kegiatan atau per rekap). Kegiatan yang sudah
- *            dicairkan otomatis masuk Daftar di modul Pengesahan.
+ * - Riwayat: tabel rekapan pencairan (Pencairan 01, 02, …: tanggal, sumber dana, nominal). Tombol aksi
+ *            "Lihat daftar" mengganti tabel dengan daftar kegiatan yang sudah dicairkan pada rekap itu.
+ *            Kegiatan yang sudah dicairkan otomatis masuk Daftar di modul Pengesahan.
  * Tampilan & aturan bersama ada di components/RekapBelanja.tsx.
  */
 import RekapBelanja from "@/components/RekapBelanja";

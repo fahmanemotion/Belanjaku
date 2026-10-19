@@ -4,7 +4,8 @@
  * Modul Pengesahan
  * - Daftar : kegiatan yang sudah dicairkan tetapi belum disahkan (ceklist).
  *            Operator Pengesahan (juga Bendahara Pengeluaran / Administrator) mencentang kegiatan lalu klik "Sahkan".
- * - Riwayat: histori kegiatan yang sudah disahkan (per kegiatan atau per rekap).
+ * - Riwayat: tabel rekapan pengesahan (Pengesahan 01, 02, …: tanggal, sumber dana, nominal). Tombol aksi
+ *            "Lihat daftar" mengganti tabel dengan daftar kegiatan yang sudah disahkan pada rekap itu.
  * Tampilan & aturan bersama ada di components/RekapBelanja.tsx.
  */
 import RekapBelanja from "@/components/RekapBelanja";

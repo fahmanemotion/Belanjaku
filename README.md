@@ -36,9 +36,11 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 - Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
 - Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**. Daftar punya tab
   **Semua / RM / BLU**; bila yang dicentang campuran RM dan BLU, aplikasi otomatis membuat satu rekap untuk setiap sumber dana.
-- **Riwayat** menampilkan histori **per kegiatan** (bawaan) atau **per rekap** (beserta detail kegiatannya).
-- Rekap yang keliru bisa **dibatalkan** dari Riwayat (wajib alasan); belanjanya kembali ke daftar dan nomor rekap
-  tidak dipakai lagi. Rekap pencairan tidak bisa dibatalkan bila sebagian belanjanya sudah disahkan — batalkan rekap
+- **Riwayat** menampilkan **tabel rekapan**: Uraian (mis. *Pencairan 01*, *Pengesahan 01*), tanggal, sumber dana, dan nominal.
+  Tombol **Lihat daftar** di kolom Aksi mengganti tabel itu dengan daftar kegiatan yang sudah dicairkan / disahkan pada
+  rekap tersebut; tombol *Kembali ke tabel rekapan* untuk kembali. Uraian mengikuti nomor rekap (CAIR-2026-0001 → Pencairan 01).
+- Rekap yang keliru bisa **dibatalkan** dari daftar kegiatan rekapnya di Riwayat (wajib alasan); kegiatannya kembali ke daftar dan nomor rekap
+  tidak dipakai lagi. Rekap pencairan tidak bisa dibatalkan bila sebagian kegiatannya sudah disahkan — batalkan rekap
   pengesahannya dulu.
 - Semua langkah (catat, ubah, hapus, rekap, batal) tercatat di **Riwayat Aktivitas**; nomor dokumen dan nomor rekap bisa dilacak.
 
@@ -155,8 +157,8 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
 | `/belanja`    | Catat dokumen belanja (bagian pengadaan); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
 | `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen (BLJ-…) atau rekap (CAIR-… / SAH-…); ekspor CSV |
-| `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** per kegiatan (No. rekap, SP2D, status pengesahan) atau per rekap; batal rekap |
-| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan**; **Riwayat Pengesahan** per kegiatan atau per rekap; batal rekap |
+| `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah dicairkan (status pengesahan, batal rekap) |
+| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan**; **Riwayat Pengesahan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
 | `/referensi`  | Akun belanja, unit kerja, penyedia, sumber dana (tambah & ubah oleh Administrator) |
 | `/pengguna`   | Kelola pengguna, peran, status, atur ulang kata sandi (khusus Administrator) |
 

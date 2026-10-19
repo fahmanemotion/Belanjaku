@@ -12,6 +12,9 @@
  *                "Sahkan". Kegiatan pindah ke Riwayat Pengesahan                        → Disahkan
  * Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
  *
+ * Riwayat menampilkan tabel rekapan (Uraian "Pencairan 01", tanggal, sumber dana, nominal); tombol aksi
+ * "Lihat daftar" mengganti tabel itu dengan daftar kegiatan yang sudah dicairkan / disahkan pada rekap tersebut.
+ *
  * Setiap "Cairkan"/"Sahkan" membentuk rekap bernomor (CAIR-… / SAH-…). Satu rekap berisi satu
  * sumber dana; bila yang dicentang campuran RM dan BLU, rekap otomatis dibuat per sumber dana.
  * Rekap yang keliru dapat dibatalkan (wajib alasan) sehingga kegiatannya kembali ke daftar.
@@ -30,7 +33,6 @@ import type { JenisDokumen, JenisPencairan, JenisRekap, Kegiatan, Rekap } from "
 type Dana = "RM" | "BLU";
 type TabDana = "Semua" | Dana;
 type Tampilan = "daftar" | "riwayat";
-type ModeRiwayat = "kegiatan" | "rekap";
 type FilterDok = "Semua" | JenisDokumen;
 type FilterDana = "Semua" | Dana;
 type FilterBayar = "Semua" | JenisPencairan;
@@ -105,6 +107,11 @@ const KONFIG: Record<JenisRekap, Konfig> = {
 };
 
 const jml = (n: number) => desimal(n, 0);
+/** Uraian rekap untuk tabel riwayat: CAIR-2026-0001 → "Pencairan 01", SAH-2026-0012 → "Pengesahan 12" */
+export function labelRekap(r: Pick<Rekap, "nomor" | "jenisRekap">): string {
+  const urut = Number(r.nomor.split("-").pop());
+  return `${r.jenisRekap === "pencairan" ? "Pencairan" : "Pengesahan"} ${Number.isFinite(urut) ? String(urut).padStart(2, "0") : r.nomor}`;
+}
 const totalNilai = (xs: Kegiatan[]) => jumlah(xs.map((k) => k.nilai));
 /** "RM 2 · BLU 3" bila kegiatan terpilih tercampur dua sumber dana */
 const rincianDana = (xs: Kegiatan[]) => {
@@ -163,7 +170,7 @@ export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
             <button type="button" className={tampilan === "riwayat" ? "on" : ""} aria-pressed={tampilan === "riwayat"} onClick={() => setTampilan("riwayat")}>
               <Icon name="history" />
               Riwayat
-              {selesai.length > 0 && <span className="count netral">{jml(selesai.length)}</span>}
+              {daftarRekap.length > 0 && <span className="count netral">{jml(daftarRekap.length)}</span>}
             </button>
           </div>
         }
@@ -471,8 +478,9 @@ export function InfoPencairan({ k }: { k: Kegiatan }) {
   if (!k.pencairan) return <span className="note">—</span>;
   return (
     <span className="info-rekap">
-      <span className="mono">{k.pencairan.nomor}</span>
+      <b className="judul-info-rekap">{labelRekap({ nomor: k.pencairan.nomor, jenisRekap: "pencairan" })}</b>
       <span className="info-rekap-sub">
+        <span className="mono">{k.pencairan.nomor}</span>
         <Badge tone={TONE_JENIS_BAYAR[k.pencairan.jenis]}>{k.pencairan.jenis}</Badge>
         {tanggal(k.pencairan.tanggal)}
       </span>
@@ -544,7 +552,7 @@ function FormRekap({
     if (hasil.length === 0) return;
     if (hasil.length === grup.length) {
       const n = jumlah(hasil.map((r) => r.jumlah));
-      toast(`${jml(n)} kegiatan ${K.kata} pada ${hasil.map((r) => r.nomor).join(" dan ")}`);
+      toast(`${jml(n)} kegiatan ${K.kata} · ${hasil.map((r) => `${labelRekap(r)} (${r.nomor})`).join(" dan ")}`);
     }
     onSelesai(hasil);
   };
@@ -633,24 +641,20 @@ function FormRekap({
 }
 
 /* =========================================================
-   Riwayat: per kegiatan (histori kegiatan yang sudah diproses) atau per rekap
+   Riwayat: tabel rekapan → tombol aksi menampilkan daftar kegiatan rekap tersebut
    ========================================================= */
 function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar: Rekap[]; bisa: boolean; baru: string[] }) {
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
-  const { kegiatan, rekap: semuaRekap, infoPengguna, namaUnit } = useStore();
-  const [mode, setMode] = useState<ModeRiwayat>("kegiatan");
+  const { kegiatan, infoPengguna } = useStore();
   const [dana, setDana] = useState<FilterDana>("Semua");
   const [bayar, setBayar] = useState<FilterBayar>("Semua");
   const [cari, setCari] = useState("");
-  const [buka, setBuka] = useState<Set<string>>(() => new Set(baru));
+  /** nomor rekap yang sedang dibuka (tabel rekapan diganti daftar kegiatannya) */
+  const [aktif, setAktif] = useState<string | null>(null);
   const [dibatalkan, setDibatalkan] = useState<Rekap | null>(null);
 
-  /** nomor rekap → data rekap (pencairan & pengesahan) untuk nomor SP2D / dokumen pengesahan */
-  const petaRekap = useMemo(() => new Map(semuaRekap.map((r) => [`${r.jenisRekap}:${r.nomor}`, r])), [semuaRekap]);
-  const nomorDari = (k: Kegiatan) => (cair ? k.pencairan?.nomor : k.pengesahan?.nomor);
-
-  // Kegiatan per nomor rekap (untuk tampilan per rekap)
+  // Kegiatan per nomor rekap
   const isi = useMemo(() => {
     const peta = new Map<string, Kegiatan[]>();
     for (const k of kegiatan) {
@@ -663,456 +667,372 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
     return peta;
   }, [kegiatan, cair]);
 
-  // Histori kegiatan: terbaru di atas
-  const riwayatKeg = useMemo(() => {
-    const info = (k: Kegiatan) => (cair ? k.pencairan : k.pengesahan)!;
-    return kegiatan
-      .filter((k) => (cair ? k.pencairan : k.pengesahan))
-      .sort((a, b) => info(b).tanggal.localeCompare(info(a).tanggal) || info(b).nomor.localeCompare(info(a).nomor) || a.id.localeCompare(b.id));
-  }, [kegiatan, cair]);
+  const baris = useMemo(() => {
+    const q = cari.trim().toLowerCase();
+    return daftar.filter(
+      (r) =>
+        (dana === "Semua" || r.dana === dana) &&
+        (bayar === "Semua" || r.jenisBayar === bayar) &&
+        (!q ||
+          [
+            labelRekap(r),
+            r.nomor,
+            r.referensi ?? "",
+            r.catatan ?? "",
+            infoPengguna(r.dibuatOleh).nama,
+            ...(isi.get(r.nomor) ?? []).flatMap((k) => [k.id, k.uraian, k.noDokumen, k.penyedia]),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(q)),
+    );
+  }, [daftar, dana, bayar, cari, isi, infoPengguna]);
 
-  const q = cari.trim().toLowerCase();
-  const barisKeg = useMemo(
-    () =>
-      riwayatKeg.filter(
-        (k) =>
-          (dana === "Semua" || k.dana === dana) &&
-          (bayar === "Semua" || k.pencairan?.jenis === bayar) &&
-          (!q ||
-            [
-              k.id,
-              k.uraian,
-              k.noDokumen,
-              k.penyedia,
-              k.mak,
-              namaUnit(k.unit),
-              k.pencairan?.nomor ?? "",
-              k.pengesahan?.nomor ?? "",
-              k.pencairan ? petaRekap.get(`pencairan:${k.pencairan.nomor}`)?.referensi ?? "" : "",
-              k.pengesahan ? petaRekap.get(`pengesahan:${k.pengesahan.nomor}`)?.referensi ?? "" : "",
-            ]
-              .join(" ")
-              .toLowerCase()
-              .includes(q)),
-      ),
-    [riwayatKeg, dana, bayar, q, namaUnit, petaRekap],
-  );
-  const barisRekap = useMemo(
-    () =>
-      daftar.filter(
-        (r) =>
-          (dana === "Semua" || r.dana === dana) &&
-          (bayar === "Semua" || r.jenisBayar === bayar) &&
-          (!q ||
-            [r.nomor, r.referensi ?? "", r.catatan ?? "", infoPengguna(r.dibuatOleh).nama, ...(isi.get(r.nomor) ?? []).flatMap((k) => [k.id, k.uraian, k.noDokumen, k.penyedia])]
-              .join(" ")
-              .toLowerCase()
-              .includes(q)),
-      ),
-    [daftar, dana, bayar, q, isi, infoPengguna],
-  );
-
-  const halK = useHalaman(barisKeg);
-  const halR = useHalaman(barisRekap);
-  const awal = () => {
-    halK.awal();
-    halR.awal();
-  };
+  const hal = useHalaman(baris);
   const saring =
     <T,>(set: (v: T) => void) =>
     (v: T) => {
       set(v);
-      awal();
+      hal.awal();
     };
   const adaFilter = dana !== "Semua" || bayar !== "Semua" || cari !== "";
   const reset = () => {
     setDana("Semua");
     setBayar("Semua");
     setCari("");
-    awal();
+    hal.awal();
   };
-  const toggle = (nomor: string) =>
-    setBuka((prev) => {
-      const s = new Set(prev);
-      if (s.has(nomor)) s.delete(nomor);
-      else s.add(nomor);
-      return s;
-    });
-  /** Dari tabel kegiatan: buka rekapnya di tampilan per rekap */
-  const lihatRekap = (nomor: string) => {
-    setMode("rekap");
-    setDana("Semua");
-    setBayar("Semua");
-    setCari(nomor);
-    setBuka((prev) => new Set(prev).add(nomor));
-    awal();
+  /** Ganti tampilan: tabel rekapan ⇄ daftar kegiatan satu rekap (layar kembali ke judul panel) */
+  const gantiTampilan = (nomor: string | null) => {
+    setAktif(nomor);
+    const el = hal.ref.current;
+    if (el && el.getBoundingClientRect().top < 0) {
+      const halus = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: halus ? "smooth" : "auto", block: "start" });
+    }
   };
 
-  const totalKeg = totalNilai(barisKeg);
+  const rekapAktif = aktif ? daftar.find((r) => r.nomor === aktif) : undefined;
+  const labelTgl = cair ? "Tgl. Pencairan" : "Tgl. Pengesahan";
+  const labelNominal = cair ? "Nominal Pencairan" : "Nominal Pengesahan";
+  const total = jumlah(baris.map((r) => r.total));
 
   return (
-    <section className="panel ada-paginasi" ref={mode === "kegiatan" ? halK.ref : halR.ref}>
-      <div className="ph">
-        <div>
-          <h3>{K.riwayat}</h3>
-          <p className="sub">
-            {mode === "kegiatan"
-              ? `${jml(barisKeg.length)} kegiatan ${K.kata} · total ${rupiah(totalKeg)}`
-              : `${jml(barisRekap.length)} rekap · ${jml(jumlah(barisRekap.map((r) => r.jumlah)))} kegiatan · total ${rupiah(jumlah(barisRekap.map((r) => r.total)))}`}
-          </p>
-        </div>
-        <div className="tbar filter-kegiatan">
-          <div className="seg seg-sm" role="group" aria-label="Tampilan riwayat">
-            <button type="button" className={mode === "kegiatan" ? "on" : ""} aria-pressed={mode === "kegiatan"} onClick={() => setMode("kegiatan")}>
-              Per kegiatan
-            </button>
-            <button type="button" className={mode === "rekap" ? "on" : ""} aria-pressed={mode === "rekap"} onClick={() => setMode("rekap")}>
-              Per rekap
-            </button>
-          </div>
-          <Saring<FilterDana>
-            label="Sumber dana"
-            value={dana}
-            onChange={saring(setDana)}
-            opsi={[{ value: "Semua", label: "Semua dana" }, ...DANA.map((d) => ({ value: d, label: d }))]}
-          />
-          {cair && (
-            <Saring<FilterBayar>
-              label="Jenis pembayaran"
-              value={bayar}
-              onChange={saring(setBayar)}
-              opsi={[{ value: "Semua", label: "Semua jenis" }, ...JENIS_PENCAIRAN.map((j) => ({ value: j.value, label: j.value }))]}
-            />
-          )}
-          <SearchBox
-            id={`${jenis}-riwayat-cari`}
-            value={cari}
-            onChange={saring(setCari)}
-            placeholder={mode === "kegiatan" ? "Cari kegiatan, dokumen, nomor rekap" : `Cari nomor rekap, ${cair ? "SP2D" : "dokumen"}, atau kegiatan`}
-          />
-          {adaFilter && (
-            <button type="button" className="btn soft sm" onClick={reset}>
-              <Icon name="close" />
-              Reset
-            </button>
-          )}
-        </div>
-      </div>
-
-      {mode === "kegiatan" ? (
+    <section className="panel ada-paginasi" ref={hal.ref}>
+      {rekapAktif ? (
+        <DetailRekap
+          r={rekapAktif}
+          jenis={jenis}
+          dok={isi.get(rekapAktif.nomor) ?? []}
+          bisa={bisa}
+          baru={baru.includes(rekapAktif.nomor)}
+          onKembali={() => gantiTampilan(null)}
+          onBatal={() => setDibatalkan(rekapAktif)}
+        />
+      ) : (
         <>
+          <div className="ph">
+            <div>
+              <h3>{K.riwayat}</h3>
+              <p className="sub">
+                {jml(baris.length)} rekap · {jml(jumlah(baris.map((r) => r.jumlah)))} kegiatan · total {rupiah(total)}
+              </p>
+            </div>
+            <div className="tbar filter-kegiatan">
+              <Saring<FilterDana>
+                label="Sumber dana"
+                value={dana}
+                onChange={saring(setDana)}
+                opsi={[{ value: "Semua", label: "Semua dana" }, ...DANA.map((d) => ({ value: d, label: d }))]}
+              />
+              {cair && (
+                <Saring<FilterBayar>
+                  label="Jenis pembayaran"
+                  value={bayar}
+                  onChange={saring(setBayar)}
+                  opsi={[{ value: "Semua", label: "Semua jenis" }, ...JENIS_PENCAIRAN.map((j) => ({ value: j.value, label: j.value }))]}
+                />
+              )}
+              <SearchBox id={`${jenis}-riwayat-cari`} value={cari} onChange={saring(setCari)} placeholder="Cari rekap atau kegiatan" />
+              {adaFilter && (
+                <button type="button" className="btn soft sm" onClick={reset}>
+                  <Icon name="close" />
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="tw stack">
-            <table className="tabel-kegiatan">
+            <table className="tabel-rekap">
               <thead>
                 <tr>
-                  <KepalaKegiatan />
-                  <th>Pencairan</th>
-                  <th>Pengesahan</th>
+                  <th>Uraian</th>
+                  <th>{labelTgl}</th>
+                  <th>Sumber Dana</th>
+                  <th className="r">{labelNominal}</th>
+                  <th className="r">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {barisKeg.length === 0 ? (
-                  <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 2}>
-                    {riwayatKeg.length === 0
-                      ? `Belum ada kegiatan yang ${K.kata}. Kegiatan masuk ke sini setelah dicentang di Daftar lalu ${K.kata}.`
-                      : "Tidak ada kegiatan yang cocok dengan filter."}
+                {baris.length === 0 ? (
+                  <EmptyRow cols={5}>
+                    {daftar.length === 0
+                      ? `Belum ada rekap ${K.proses}. Rekap terbentuk saat kegiatan di Daftar dicentang lalu ${K.kata}.`
+                      : "Tidak ada rekap yang cocok dengan filter."}
                   </EmptyRow>
                 ) : (
-                  halK.tampil.map((k) => {
-                    const nomor = nomorDari(k)!;
-                    const sorot = baru.includes(nomor);
-                    const rc = k.pencairan ? petaRekap.get(`pencairan:${k.pencairan.nomor}`) : undefined;
-                    const rs = k.pengesahan ? petaRekap.get(`pengesahan:${k.pengesahan.nomor}`) : undefined;
+                  hal.tampil.map((r) => {
+                    const dok = isi.get(r.nomor) ?? [];
+                    const disahkan = cair ? dok.filter((k) => k.pengesahan).length : 0;
+                    const sorot = baru.includes(r.nomor);
                     return (
-                      <tr key={k.id} className={sorot ? "baru" : undefined}>
-                        <SelKegiatan k={k} />
-                        <td data-label="Pencairan">
-                          {k.pencairan && (
-                            <SelRekap
-                              nomor={k.pencairan.nomor}
-                              tgl={k.pencairan.tanggal}
-                              jenisBayar={k.pencairan.jenis}
-                              referensi={rc?.referensi}
-                              baru={cair && sorot}
-                              onBuka={cair ? lihatRekap : undefined}
-                            />
-                          )}
+                      <tr key={r.nomor} className={`bisa-klik ${sorot ? "baru" : ""}`} onClick={() => gantiTampilan(r.nomor)}>
+                        <td className="main">
+                          <span className="uraian-rekap">
+                            <span className="judul-rekap">
+                              <b>{labelRekap(r)}</b>
+                              {sorot && <span className="badge g">Baru</span>}
+                            </span>
+                            <small>
+                              <span className="mono">{r.nomor}</span> · {jml(r.jumlah)} kegiatan
+                              {r.jenisBayar ? ` · ${r.jenisBayar}` : ""}
+                              {r.referensi ? ` · No. ${r.referensi}` : ""}
+                            </small>
+                            {cair && (
+                              <span className="status-rekap-baris">
+                                {dok.length > 0 && disahkan === dok.length ? (
+                                  <Status tone="g">Disahkan semua</Status>
+                                ) : disahkan > 0 ? (
+                                  <Status tone="i">
+                                    {jml(disahkan)}/{jml(dok.length)} disahkan
+                                  </Status>
+                                ) : (
+                                  <Status tone="w">Menunggu pengesahan</Status>
+                                )}
+                              </span>
+                            )}
+                          </span>
                         </td>
-                        <td data-label="Pengesahan">
-                          {k.pengesahan ? (
-                            <SelRekap
-                              nomor={k.pengesahan.nomor}
-                              tgl={k.pengesahan.tanggal}
-                              referensi={rs?.referensi}
-                              baru={!cair && sorot}
-                              onBuka={cair ? undefined : lihatRekap}
-                            />
-                          ) : (
-                            <Status tone="w">Menunggu pengesahan</Status>
-                          )}
+                        <td className="num" data-label={labelTgl}>
+                          {tanggal(r.tanggal)}
+                        </td>
+                        <td data-label="Sumber Dana">
+                          <BadgeDana dana={r.dana} />
+                        </td>
+                        <td className="r num" data-label={labelNominal}>
+                          <b>{rupiah(r.total)}</b>
+                        </td>
+                        <td className="r aksi-rekap">
+                          <button
+                            type="button"
+                            className="btn soft sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              gantiTampilan(r.nomor);
+                            }}
+                            aria-label={`Lihat daftar kegiatan ${labelRekap(r)}`}
+                          >
+                            <Icon name="eye" />
+                            Lihat daftar
+                          </button>
                         </td>
                       </tr>
                     );
                   })
                 )}
               </tbody>
-              {barisKeg.length > 0 && (
+              {baris.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>
-                      Total {jml(barisKeg.length)} kegiatan
-                      {halK.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
+                    <td colSpan={3}>
+                      Total {jml(baris.length)} rekap
+                      {hal.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
                     </td>
-                    <td className="r num">{rupiah(totalKeg)}</td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-          <Paginasi halaman={halK.halaman} jumlahHalaman={halK.jumlahHalaman} total={barisKeg.length} ukuran={halK.ukuran} satuan="kegiatan" onPindah={halK.pindah} />
-        </>
-      ) : (
-        <>
-          {barisRekap.length === 0 ? (
-            <div className="rekap-kosong">
-              <Icon name="history" />
-              <b>{daftar.length === 0 ? `Belum ada rekap ${K.proses}` : "Tidak ada rekap yang cocok"}</b>
-              <p>
-                {daftar.length === 0
-                  ? `Rekap terbentuk saat kegiatan di Daftar dicentang lalu ${K.kata}.`
-                  : "Ubah atau reset filter untuk melihat rekap lainnya."}
-              </p>
-            </div>
-          ) : (
-            <div className="rekap-daftar">
-              {halR.tampil.map((r) => (
-                <KartuRekap
-                  key={r.nomor}
-                  r={r}
-                  jenis={jenis}
-                  dok={isi.get(r.nomor) ?? []}
-                  terbuka={buka.has(r.nomor)}
-                  baru={baru.includes(r.nomor)}
-                  bisa={bisa}
-                  onToggle={() => toggle(r.nomor)}
-                  onBatal={() => setDibatalkan(r)}
-                />
-              ))}
-            </div>
-          )}
-          <Paginasi halaman={halR.halaman} jumlahHalaman={halR.jumlahHalaman} total={barisRekap.length} ukuran={halR.ukuran} satuan="rekap" onPindah={halR.pindah} />
-        </>
-      )}
-
-      {dibatalkan && <KonfirmasiBatal r={dibatalkan} jenis={jenis} onClose={() => setDibatalkan(null)} />}
-    </section>
-  );
-}
-
-/** Sel nomor rekap di tabel riwayat: nomor (bisa diklik), jenis, tanggal, nomor referensi */
-function SelRekap({
-  nomor,
-  tgl,
-  jenisBayar,
-  referensi,
-  baru,
-  onBuka,
-}: {
-  nomor: string;
-  tgl: string;
-  jenisBayar?: JenisPencairan;
-  referensi?: string;
-  baru?: boolean;
-  onBuka?: (nomor: string) => void;
-}) {
-  return (
-    <span className="info-rekap">
-      {onBuka ? (
-        <button
-          type="button"
-          className="doc-chip rapat"
-          title={`Lihat rekap ${nomor}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onBuka(nomor);
-          }}
-        >
-          {nomor}
-        </button>
-      ) : (
-        <span className="mono">{nomor}</span>
-      )}
-      <span className="info-rekap-sub">
-        {jenisBayar && <Badge tone={TONE_JENIS_BAYAR[jenisBayar]}>{jenisBayar}</Badge>}
-        {tanggal(tgl)}
-        {baru && <span className="badge g">Baru</span>}
-      </span>
-      {referensi && <span className="info-rekap-ref">No. {referensi}</span>}
-    </span>
-  );
-}
-
-function KartuRekap({
-  r,
-  jenis,
-  dok,
-  terbuka,
-  baru,
-  bisa,
-  onToggle,
-  onBatal,
-}: {
-  r: Rekap;
-  jenis: JenisRekap;
-  dok: Kegiatan[];
-  terbuka: boolean;
-  baru: boolean;
-  bisa: boolean;
-  onToggle: () => void;
-  onBatal: () => void;
-}) {
-  const K = KONFIG[jenis];
-  const cair = jenis === "pencairan";
-  const { infoPengguna } = useStore();
-  const oleh = infoPengguna(r.dibuatOleh);
-  const idIsi = `isi-${r.nomor}`;
-  // Rekap pencairan: berapa kegiatannya yang sudah disahkan
-  const disahkan = cair ? dok.filter((k) => k.pengesahan) : [];
-  const nomorSah = [...new Set(disahkan.map((k) => k.pengesahan!.nomor))];
-  const terkunci = cair && disahkan.length > 0;
-
-  return (
-    <article className={`rekap ${terbuka ? "buka" : ""} ${baru ? "baru" : ""}`}>
-      <button type="button" className="rekap-kepala" aria-expanded={terbuka} aria-controls={idIsi} onClick={onToggle}>
-        <span className="rk-nomor">
-          <b className="mono">{r.nomor}</b>
-          <small>
-            {tanggal(r.tanggal)}
-            {baru && <span className="badge g">Baru</span>}
-          </small>
-        </span>
-        <span className="rk-badge">
-          <BadgeDana dana={r.dana} />
-          {r.jenisBayar && <Badge tone={TONE_JENIS_BAYAR[r.jenisBayar]}>{r.jenisBayar}</Badge>}
-        </span>
-        <span className="rk-sel sempit">
-          <small>Kegiatan</small>
-          <b className="num">{jml(r.jumlah)}</b>
-        </span>
-        <span className="rk-sel">
-          <small>Total</small>
-          <b className="num">{rupiah(r.total)}</b>
-        </span>
-        <span className="rk-sel">
-          <small>{K.refSingkat}</small>
-          <b className={r.referensi ? "mono" : "kosong"}>{r.referensi ?? "—"}</b>
-        </span>
-        <span className="rk-sel">
-          <small>Dibuat oleh</small>
-          <b>{oleh.nama}</b>
-          <small>{tanggalJam(r.dibuatPada)}</small>
-        </span>
-        {cair && (
-          <span className="rk-status">
-            {dok.length > 0 && disahkan.length === dok.length ? (
-              <Status tone="g">Disahkan semua</Status>
-            ) : disahkan.length > 0 ? (
-              <Status tone="i">
-                {jml(disahkan.length)}/{jml(dok.length)} disahkan
-              </Status>
-            ) : (
-              <Status tone="w">Menunggu pengesahan</Status>
-            )}
-          </span>
-        )}
-        <span className="rekap-chev" aria-hidden="true">
-          <Icon name="chevron" />
-        </span>
-      </button>
-
-      {terbuka && (
-        <div className="rekap-isi" id={idIsi}>
-          {r.catatan && (
-            <p className="rekap-catatan">
-              <Icon name="info" />
-              <span>{r.catatan}</span>
-            </p>
-          )}
-          <div className="tw stack">
-            <table className="tabel-kegiatan">
-              <thead>
-                <tr>
-                  <KepalaKegiatan />
-                  <th>{cair ? "Pengesahan" : "Pencairan"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dok.length === 0 ? (
-                  <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 1}>Rincian kegiatan rekap ini tidak ditemukan.</EmptyRow>
-                ) : (
-                  dok.map((k) => (
-                    <tr key={k.id}>
-                      <SelKegiatan k={k} />
-                      <td data-label={cair ? "Pengesahan" : "Pencairan"}>
-                        {cair ? (
-                          k.pengesahan ? (
-                            <span className="info-rekap">
-                              <Status tone="g">Disahkan</Status>
-                              <span className="info-rekap-sub">
-                                <span className="mono">{k.pengesahan.nomor}</span> · {tanggal(k.pengesahan.tanggal)}
-                              </span>
-                            </span>
-                          ) : (
-                            <Status tone="w">Menunggu pengesahan</Status>
-                          )
-                        ) : (
-                          <InfoPencairan k={k} />
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {dok.length > 0 && (
-                <tfoot>
-                  <tr>
-                    <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>Total {jml(dok.length)} kegiatan</td>
-                    <td className="r num">{rupiah(totalNilai(dok))}</td>
+                    <td className="r num">{rupiah(total)}</td>
                     <td />
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
-          {bisa && (
-            <div className="rekap-aksi">
-              <span className="note">
-                {terkunci
-                  ? `Tidak bisa dibatalkan karena sebagian kegiatan sudah disahkan (${nomorSah.join(", ")}). Batalkan rekap pengesahannya terlebih dahulu.`
-                  : `Bila rekap keliru, batalkan agar kegiatannya kembali ke ${K.daftar}.`}
-              </span>
-              <button type="button" className="btn danger sm" disabled={terkunci} onClick={onBatal}>
-                <Icon name="close" />
-                Batalkan rekap
-              </button>
-            </div>
-          )}
-        </div>
+          <Paginasi halaman={hal.halaman} jumlahHalaman={hal.jumlahHalaman} total={baris.length} ukuran={hal.ukuran} satuan="rekap" onPindah={hal.pindah} />
+        </>
       )}
-    </article>
+
+      {dibatalkan && (
+        <KonfirmasiBatal
+          r={dibatalkan}
+          jenis={jenis}
+          onClose={() => setDibatalkan(null)}
+          onBatal={() => {
+            setDibatalkan(null);
+            gantiTampilan(null);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+/* ---------- Daftar kegiatan dalam satu rekap (menggantikan tabel rekapan) ---------- */
+function DetailRekap({
+  r,
+  jenis,
+  dok,
+  bisa,
+  baru,
+  onKembali,
+  onBatal,
+}: {
+  r: Rekap;
+  jenis: JenisRekap;
+  dok: Kegiatan[];
+  bisa: boolean;
+  baru: boolean;
+  onKembali: () => void;
+  onBatal: () => void;
+}) {
+  const K = KONFIG[jenis];
+  const cair = jenis === "pencairan";
+  const { infoPengguna } = useStore();
+  // Rekap pencairan yang sebagian kegiatannya sudah disahkan tidak boleh dibatalkan
+  const disahkan = cair ? dok.filter((k) => k.pengesahan) : [];
+  const nomorSah = [...new Set(disahkan.map((k) => k.pengesahan!.nomor))];
+  const terkunci = cair && disahkan.length > 0;
+  const kolomAkhir = cair ? "Pengesahan" : "Pencairan";
+
+  return (
+    <>
+      <div className="kembali-rekap">
+        <button type="button" className="btn soft sm" onClick={onKembali}>
+          <Icon name="chevron" className="kiri" />
+          Kembali ke tabel rekapan
+        </button>
+      </div>
+      <div className="ph">
+        <div>
+          <h3>
+            {labelRekap(r)} {baru && <span className="badge g">Baru</span>}
+          </h3>
+          <p className="sub">
+            Daftar kegiatan yang sudah {K.kata} · <span className="mono">{r.nomor}</span> · {jml(r.jumlah)} kegiatan · total {rupiah(r.total)}
+          </p>
+        </div>
+        {bisa && (
+          <button type="button" className="btn danger sm" disabled={terkunci} onClick={onBatal} title={terkunci ? "Batalkan rekap pengesahannya terlebih dahulu" : undefined}>
+            <Icon name="close" />
+            Batalkan rekap
+          </button>
+        )}
+      </div>
+
+      <dl className="info-rekap-detail">
+        <div>
+          <dt>{K.labelTanggal}</dt>
+          <dd>{tanggal(r.tanggal)}</dd>
+        </div>
+        <div>
+          <dt>Sumber dana</dt>
+          <dd>
+            <BadgeDana dana={r.dana} /> {NAMA_DANA[r.dana as Dana] ?? r.dana}
+          </dd>
+        </div>
+        {r.jenisBayar && (
+          <div>
+            <dt>Jenis pembayaran</dt>
+            <dd>
+              <Badge tone={TONE_JENIS_BAYAR[r.jenisBayar]}>{r.jenisBayar}</Badge>
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>{K.refSingkat}</dt>
+          <dd className={r.referensi ? "mono" : "kosong"}>{r.referensi ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>Dibuat oleh</dt>
+          <dd>
+            {infoPengguna(r.dibuatOleh).nama}
+            <small>{tanggalJam(r.dibuatPada)}</small>
+          </dd>
+        </div>
+        {r.catatan && (
+          <div className="lebar">
+            <dt>Catatan</dt>
+            <dd>{r.catatan}</dd>
+          </div>
+        )}
+      </dl>
+      {terkunci && (
+        <p className="info-akses">
+          <Icon name="lock" />
+          <span>
+            Rekap ini tidak bisa dibatalkan karena sebagian kegiatannya sudah disahkan ({nomorSah.join(", ")}). Batalkan rekap pengesahannya terlebih
+            dahulu.
+          </span>
+        </p>
+      )}
+
+      <div className="tw stack">
+        <table className="tabel-kegiatan">
+          <thead>
+            <tr>
+              <KepalaKegiatan />
+              <th>{kolomAkhir}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dok.length === 0 ? (
+              <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 1}>Rincian kegiatan rekap ini tidak ditemukan.</EmptyRow>
+            ) : (
+              dok.map((k) => (
+                <tr key={k.id}>
+                  <SelKegiatan k={k} />
+                  <td data-label={kolomAkhir}>
+                    {cair ? (
+                      k.pengesahan ? (
+                        <span className="info-rekap">
+                          <Status tone="g">Disahkan</Status>
+                          <span className="info-rekap-sub">
+                            <span className="mono">{k.pengesahan.nomor}</span> · {tanggal(k.pengesahan.tanggal)}
+                          </span>
+                        </span>
+                      ) : (
+                        <Status tone="w">Menunggu pengesahan</Status>
+                      )
+                    ) : (
+                      <InfoPencairan k={k} />
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          {dok.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>Total {jml(dok.length)} kegiatan</td>
+                <td className="r num">{rupiah(totalNilai(dok))}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </>
   );
 }
 
 /* ---------- Konfirmasi batal rekap (wajib alasan, tercatat di Riwayat Aktivitas) ---------- */
-function KonfirmasiBatal({ r, jenis, onClose }: { r: Rekap; jenis: JenisRekap; onClose: () => void }) {
+function KonfirmasiBatal({ r, jenis, onClose, onBatal }: { r: Rekap; jenis: JenisRekap; onClose: () => void; onBatal: () => void }) {
   const K = KONFIG[jenis];
   const { batalRekap, toast } = useStore();
   const [alasan, setAlasan] = useState("");
 
   return (
     <Modal
-      title={`Batalkan ${r.nomor}?`}
+      title={`Batalkan ${labelRekap(r)}?`}
       description={`${jml(r.jumlah)} kegiatan dalam rekap ini kembali ke ${K.daftar}. Nomor ${r.nomor} tidak dipakai lagi; pembatalan dan alasannya tercatat di Riwayat Aktivitas.`}
       submitLabel="Batalkan rekap"
       bahaya
@@ -1122,12 +1042,16 @@ function KonfirmasiBatal({ r, jenis, onClose }: { r: Rekap; jenis: JenisRekap; o
           return;
         }
         if (!(await batalRekap(jenis, r.nomor, alasan))) return;
-        toast(`${r.nomor} dibatalkan · ${jml(r.jumlah)} kegiatan kembali ke ${K.daftar}`);
-        onClose();
+        toast(`${labelRekap(r)} (${r.nomor}) dibatalkan · ${jml(r.jumlah)} kegiatan kembali ke ${K.daftar}`);
+        onBatal();
       }}
       onClose={onClose}
     >
       <div className="full ringkas">
+        <div>
+          <span>Nomor rekap</span>
+          <b className="mono">{r.nomor}</b>
+        </div>
         <div>
           <span>Tanggal {K.proses}</span>
           <b>{tanggal(r.tanggal)}</b>
