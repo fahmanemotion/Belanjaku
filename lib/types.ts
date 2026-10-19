@@ -41,6 +41,8 @@ export interface Kegiatan {
   pengesahan?: { nomor: string; tanggal: string };
   /** id pengguna pencatat dokumen — hanya dia yang boleh mengubah / menghapus selama belum dicairkan */
   dibuatOleh: string;
+  /** terisi bila dokumen terbit dari paket pengadaan (Kwitansi oleh PPK); diubah lewat modul Pengadaan */
+  paketId?: string;
 }
 
 /* ---------- Rekap pencairan & pengesahan ---------- */
@@ -100,7 +102,7 @@ export type JenisAktivitas =
   | "Referensi"
   | "Sesi";
 
-export type ModulAktivitas = "Belanja" | "Pencairan" | "Pengesahan" | "Pengguna" | "Referensi" | "Sistem";
+export type ModulAktivitas = "Belanja" | "Pengadaan" | "Pencairan" | "Pengesahan" | "Pengguna" | "Referensi" | "Sistem";
 
 /** Satu kolom yang berubah: nilai sebelum → sesudah (sudah dalam bentuk teks siap tampil) */
 export interface PerubahanKolom {
@@ -146,6 +148,13 @@ export interface Pengguna {
   aktif: boolean;
   /** profil akun yang sudah dihapus (tetap disimpan agar riwayat terbaca) */
   dihapus?: boolean;
+  /** data penanda tangan dokumen pengadaan (PPK & Pejabat Pengadaan) */
+  nip?: string;
+  /** pangkat/golongan, mis. Penata (III/c) */
+  pangkat?: string;
+  /** SK penunjukan PPK (dicetak di BAP) */
+  skNomor?: string;
+  skTanggal?: string;
 }
 
 export interface RefAkun {
@@ -166,6 +175,14 @@ export interface RefPenyedia {
   bidang: string;
   kota: string;
   aktif: boolean;
+  /** data pembayaran yang dicetak di dokumen pengadaan (Surat Pesanan s.d. Kwitansi) */
+  alamat: string;
+  pimpinan: string;
+  /** jabatan pimpinan, mis. Direktur */
+  jabatan: string;
+  npwp: string;
+  bank: string;
+  rekening: string;
 }
 
 export interface RefDana {
@@ -179,4 +196,80 @@ export interface Referensi {
   unit: RefUnit[];
   penyedia: RefPenyedia[];
   dana: RefDana[];
+}
+
+/* ---------- Pengadaan: alur dokumen Kwitansi ---------- */
+
+/**
+ * 1 Nota Dinas & HPS (PPK) → 2 Surat Pesanan (Pejabat Pengadaan) → 3 Nota Pembelian (Pejabat Pengadaan)
+ * → 4 Kwitansi, BAP & BAST (PPK; otomatis menjadi dokumen belanja di Daftar Pencairan)
+ */
+export type TahapPaket = 1 | 2 | 3 | 4;
+
+/** Satu barang/jasa pada HPS */
+export interface ItemPaket {
+  uraian: string;
+  /** baris spesifikasi, dicetak "- …" di bawah uraian */
+  spesifikasi: string[];
+  jumlah: number;
+  satuan: string;
+  /** harga satuan HPS */
+  hargaHps: number;
+  /** harga satuan pembelian (Nota Pembelian, tahap 3) */
+  harga?: number;
+  ket: string;
+}
+
+/** Data penyedia yang dicetak */
+export interface DataPenyedia {
+  id?: string;
+  nama: string;
+  pimpinan: string;
+  jabatan: string;
+  alamat: string;
+  kota: string;
+  npwp: string;
+  bank: string;
+  rekening: string;
+}
+
+/** Data pejabat penanda tangan yang dicetak */
+export interface DataPejabat {
+  id?: string;
+  nama: string;
+  nip?: string;
+  pangkat?: string;
+  skNomor?: string;
+  skTanggal?: string;
+}
+
+export interface Paket {
+  /** PKT-2026-0001 */
+  id: string;
+  tahun: number;
+  tahap: TahapPaket;
+  pekerjaan: string;
+  unit: string;
+  dana: SumberDana;
+  mak: string;
+  item: ItemPaket[];
+  /** PPN 11% pada HPS */
+  ppn: boolean;
+  nd: { nomor: string; tanggal: string };
+  ppkId: string;
+  ppId?: string;
+  penyediaId?: string;
+  /** isian tahap yang dibatalkan tetap tersimpan (dipakai mengisi ulang form); berlaku bila tahap sudah dicapai */
+  sp?: { nomor: string; tanggal: string; batasHari: number };
+  nota?: { tanggal: string; ppn: boolean };
+  kwitansi?: { nomor: string; tanggal: string };
+  bap?: { nomor: string; tanggal: string; centang: boolean };
+  bast?: { nomor: string; tanggal: string };
+  /** dokumen belanja (BLJ-…) hasil kwitansi */
+  pengajuanId?: string;
+  /** salinan data penyedia & pejabat saat kwitansi terbit */
+  arsip?: { penyedia?: DataPenyedia; ppk?: DataPejabat; pp?: DataPejabat };
+  dibuatOleh: string;
+  dibuatPada: string;
+  diubahPada: string;
 }

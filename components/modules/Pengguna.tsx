@@ -23,8 +23,10 @@ const TONE_PERAN: Record<Peran, Tone> = {
 /**
  * Pengguna hanya dibedakan menurut peran (tidak terikat unit kerja).
  * Operator Pencairan & Operator Pengesahan hanya boleh satu akun aktif; peran lain boleh banyak akun.
+ * PPK & Pejabat Pengadaan menyimpan data penanda tangan (NIP, pangkat; SK untuk PPK) untuk dokumen pengadaan.
  */
 const satuAkun = (r: Peran) => PERAN_SATU_AKUN.includes(r);
+const penandaTangan = (r: Peran) => r === "PPK" || r === "Pejabat Pengadaan";
 /** Pemegang aktif peran satu-akun selain `kecuali` (untuk menandai pilihan peran yang sudah terisi) */
 const pemegang = (daftar: TPengguna[], r: Peran, kecuali?: string) =>
   satuAkun(r) ? daftar.find((u) => u.peran === r && u.aktif && !u.dihapus && u.id !== kecuali) : undefined;
@@ -109,6 +111,13 @@ export default function Pengguna() {
               <Status tone={u.aktif ? "g" : "m"}>{u.aktif ? "Aktif" : "Nonaktif"}</Status>
             </div>
             <p className="tugas-peran">{AKSES[u.peran]?.tugas}</p>
+            {penandaTangan(u.peran) && (
+              <p className={`data-pejabat ${u.nip ? "" : "kurang"}`}>
+                {u.nip ? `NIP ${u.nip}` : "NIP belum diisi"}
+                {u.pangkat ? ` · ${u.pangkat}` : ""}
+                {u.peran === "PPK" && !u.skNomor ? " · SK belum diisi" : ""}
+              </p>
+            )}
             <div className="uaksi">
               <button type="button" className="btn soft sm" onClick={() => setAkanDiedit(u)} title={`Edit data ${u.nama}`}>
                 <Icon name="edit" />
@@ -183,7 +192,7 @@ export default function Pengguna() {
 
 /** Form tambah pengguna; bila `awal` diisi, form menjadi form edit */
 function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna }) {
-  const { pengguna, penggunaAktif, tambahPengguna, ubahPengguna, toast } = useStore();
+  const { pengguna, penggunaAktif, tambahPengguna, ubahPengguna, simpanDataPejabat, toast } = useStore();
   const ID_AKUN_SAYA = penggunaAktif.id;
   const modeEdit = Boolean(awal);
   const akunSendiri = awal?.id === ID_AKUN_SAYA;
@@ -195,6 +204,24 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
   // (akun nonaktif boleh disiapkan lebih dulu sebagai pengganti)
   const terisi = pemegang(pengguna, peran, awal?.id);
   const [sandi, setSandi] = useState(() => (awal ? "" : sandiAcak()));
+  // data penanda tangan dokumen pengadaan (PPK & Pejabat Pengadaan)
+  const [nip, setNip] = useState(awal?.nip ?? "");
+  const [pangkat, setPangkat] = useState(awal?.pangkat ?? "");
+  const [skNomor, setSkNomor] = useState(awal?.skNomor ?? "");
+  const [skTanggal, setSkTanggal] = useState(awal?.skTanggal ?? "");
+  const pejabat = penandaTangan(peran);
+  const dataPejabat = {
+    nip: nip.trim(),
+    pangkat: pangkat.trim(),
+    skNomor: peran === "PPK" ? skNomor.trim() : awal?.skNomor ?? "",
+    skTanggal: peran === "PPK" ? skTanggal : awal?.skTanggal ?? "",
+  };
+  const pejabatBerubah =
+    pejabat &&
+    (dataPejabat.nip !== (awal?.nip ?? "") ||
+      dataPejabat.pangkat !== (awal?.pangkat ?? "") ||
+      dataPejabat.skNomor !== (awal?.skNomor ?? "") ||
+      dataPejabat.skTanggal !== (awal?.skTanggal ?? ""));
 
   const simpan = async () => {
     const em = email.trim().toLowerCase();
@@ -210,15 +237,28 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
       toast(`Peran ${peran} hanya boleh satu akun aktif dan saat ini dipakai ${terisi.nama}`);
       return;
     }
+    if (pejabat && dataPejabat.nip && (!/^[\d ]+$/.test(dataPejabat.nip) || dataPejabat.nip.replace(/\s/g, "").length !== 18)) {
+      toast("NIP harus 18 digit angka (boleh berspasi)");
+      return;
+    }
     if (awal) {
-      if (!(await ubahPengguna(awal.id, { nama: nama.trim(), email: em, peran, aktif }))) return;
-      toast(`Data ${nama.trim()} diperbarui`);
+      const berubah =
+        nama.trim() !== awal.nama || em !== awal.email || peran !== awal.peran || aktif !== awal.aktif;
+      if (berubah && !(await ubahPengguna(awal.id, { nama: nama.trim(), email: em, peran, aktif }))) return;
+      if (pejabatBerubah && !(await simpanDataPejabat(awal.id, dataPejabat))) return;
+      toast(berubah || pejabatBerubah ? `Data ${nama.trim()} diperbarui` : "Belum ada perubahan untuk disimpan");
     } else {
       if (sandi.length < 8 || !/[A-Za-z]/.test(sandi) || !/[0-9]/.test(sandi)) {
         toast("Kata sandi awal minimal 8 karakter dan berisi huruf serta angka");
         return;
       }
-      if (!(await tambahPengguna({ nama: nama.trim(), email: em, peran, sandi }))) return;
+      const baru = await tambahPengguna({ nama: nama.trim(), email: em, peran, sandi });
+      if (!baru) return;
+      if (pejabatBerubah && !(await simpanDataPejabat(baru.id, dataPejabat))) {
+        toast(`Pengguna ditambahkan (kata sandi awal: ${sandi}), tetapi data penanda tangan gagal disimpan`);
+        onClose();
+        return;
+      }
       toast(`Pengguna ditambahkan · kata sandi awal: ${sandi}`);
     }
     onClose();
@@ -268,6 +308,27 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
             </button>
           </span>
         </Field>
+      )}
+      {pejabat && (
+        <>
+          <p className="hint">Data penanda tangan — dicetak di bawah nama pada dokumen pengadaan.</p>
+          <Field label="NIP">
+            <input value={nip} onChange={(e) => setNip(e.target.value)} className="mono" inputMode="numeric" placeholder="198810262015032003" />
+          </Field>
+          <Field label="Pangkat/golongan">
+            <input value={pangkat} onChange={(e) => setPangkat(e.target.value)} placeholder="mis. Penata (III/c)" />
+          </Field>
+          {peran === "PPK" && (
+            <>
+              <Field label="No. SK penunjukan PPK">
+                <input value={skNomor} onChange={(e) => setSkNomor(e.target.value)} placeholder="SK-PIP.Mks 258 Tahun 2025" />
+              </Field>
+              <Field label="Tanggal SK">
+                <input type="date" value={skTanggal} onChange={(e) => setSkTanggal(e.target.value)} />
+              </Field>
+            </>
+          )}
+        </>
       )}
       {modeEdit && (
         <Field label="Status akun" full>

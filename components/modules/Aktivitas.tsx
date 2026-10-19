@@ -3,7 +3,7 @@
 /**
  * Riwayat Aktivitas — jejak audit seluruh tindakan operator.
  * Menjawab: siapa melakukan apa, kapan, pada dokumen mana, dan apa yang berubah.
- * Klik nomor dokumen (BLJ-…) atau nomor rekap (CAIR-… / SAH-…) untuk "melacak" seluruh perjalanannya dari awal.
+ * Klik nomor paket (PKT-…), nomor dokumen (BLJ-…), atau nomor rekap (CAIR-… / SAH-…) untuk "melacak" seluruh perjalanannya dari awal.
  */
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
@@ -11,6 +11,7 @@ import { useStore } from "@/components/StoreProvider";
 import { TONE_BELANJA } from "@/components/modules/Belanja";
 import { Badge, BadgeDana, PageHead, Saring, SearchBox, Status } from "@/components/ui";
 import { JENIS_AKTIVITAS, MODUL_AKTIVITAS } from "@/lib/data";
+import { TAHAP } from "@/lib/pengadaan";
 import { hariIni, inisial, jam, rupiah, selisihHari, tanggal, tanggalJam, tanggalPanjang } from "@/lib/format";
 import type { Aktivitas as TAktivitas, JenisAktivitas, ModulAktivitas } from "@/lib/types";
 
@@ -22,7 +23,7 @@ const PER_HALAMAN = 40;
 const infoJenis = (j: JenisAktivitas) => JENIS_AKTIVITAS.find((x) => x.value === j)!;
 
 export default function Aktivitas() {
-  const { aktivitas, kegiatan, rekap, pengguna, infoPengguna, boleh, jejakDokumen } = useStore();
+  const { aktivitas, kegiatan, rekap, paket, pengguna, infoPengguna, boleh, jejakDokumen } = useStore();
   // Tanpa izin "aktivitas.semua" (mis. Operator Pengadaan), database hanya mengirim aktivitas sendiri + aktivitas dokumen belanja
   const lihatSemua = boleh("aktivitas.semua");
   // "Hari ini" baru dihitung di browser agar tidak berbeda dengan hasil render server
@@ -137,6 +138,7 @@ export default function Aktivitas() {
   };
   const dokLacak = lacak ? kegiatan.find((k) => k.id === lacak) : undefined;
   const rekapLacak = lacak ? rekap.find((r) => r.nomor === lacak) : undefined;
+  const paketLacak = lacak ? paket.find((p) => p.id === lacak) : undefined;
   const logLacak = lacak ? hasil : [];
   const dokDihapus = lacak ? !dokLacak && logLacak.some((a) => a.jenis === "Hapus") : false;
   const rekapBatal = lacak ? !rekapLacak && logLacak.some((a) => a.aksi.startsWith("membatalkan rekap")) : false;
@@ -217,7 +219,7 @@ export default function Aktivitas() {
               <p className="lbl">Melacak dokumen</p>
               <h3>
                 <span className="mono">{lacak}</span>{" "}
-                {dokLacak?.uraian ?? (rekapLacak ? `Rekap ${rekapLacak.jenisRekap} ${rekapLacak.dana}` : logLacak[0]?.objekLabel)}
+                {dokLacak?.uraian ?? paketLacak?.pekerjaan ?? (rekapLacak ? `Rekap ${rekapLacak.jenisRekap} ${rekapLacak.dana}` : logLacak[0]?.objekLabel)}
               </h3>
               <div className="lacak-meta">
                 {dokLacak ? (
@@ -226,6 +228,13 @@ export default function Aktivitas() {
                     {(dokLacak.pengesahan ?? dokLacak.pencairan) && <span className="mono">{(dokLacak.pengesahan ?? dokLacak.pencairan)!.nomor}</span>}
                     <span>{rupiah(dokLacak.nilai)}</span>
                     <span>dicatat oleh {infoPengguna(dokLacak.dibuatOleh).nama}</span>
+                  </>
+                ) : paketLacak ? (
+                  <>
+                    <BadgeDana dana={paketLacak.dana} />
+                    <Badge tone="i">Tahap {paketLacak.tahap}: {TAHAP[paketLacak.tahap - 1].nama}</Badge>
+                    {paketLacak.pengajuanId && <span className="mono">{paketLacak.pengajuanId}</span>}
+                    <span>PPK {infoPengguna(paketLacak.ppkId).nama}</span>
                   </>
                 ) : rekapLacak ? (
                   <>
@@ -328,8 +337,8 @@ function BarisLog({ a, onLacak }: { a: TAktivitas; onLacak?: (id: string) => voi
   const { infoPengguna, penggunaAktif } = useStore();
   const u = infoPengguna(a.oleh);
   const j = infoJenis(a.jenis);
-  // nomor dokumen belanja (BLJ-…) atau nomor rekap pencairan / pengesahan (CAIR-… / SAH-…)
-  const dokumen = /^(BLJ|CAIR|SAH)-/.test(a.objekId ?? "");
+  // nomor paket pengadaan (PKT-…), dokumen belanja (BLJ-…), atau rekap pencairan / pengesahan (CAIR-… / SAH-…)
+  const dokumen = /^(PKT|BLJ|CAIR|SAH)-/.test(a.objekId ?? "");
 
   return (
     <li className={`log t-${j.tone || "n"}`}>

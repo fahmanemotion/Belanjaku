@@ -333,5 +333,5 @@ export const JENIS_AKTIVITAS: { value: JenisAktivitas; label: string; tone: "g" 
   { value: "Sesi", label: "Masuk / keluar", tone: "m" },
 ];
 
-export const MODUL_AKTIVITAS: ModulAktivitas[] = ["Belanja", "Pencairan", "Pengesahan", "Pengguna", "Referensi", "Sistem"];
+export const MODUL_AKTIVITAS: ModulAktivitas[] = ["Pengadaan", "Belanja", "Pencairan", "Pengesahan", "Pengguna", "Referensi", "Sistem"];
 

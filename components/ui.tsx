@@ -102,6 +102,7 @@ export function Modal({
   children,
   bahaya = false,
   nonaktif = false,
+  lebar = false,
 }: {
   title: string;
   description: string;
@@ -114,6 +115,8 @@ export function Modal({
   bahaya?: boolean;
   /** kunci tombol simpan (alasannya ditampilkan di isi form) */
   nonaktif?: boolean;
+  /** modal lebar untuk form panjang (mis. daftar barang HPS) */
+  lebar?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [sedang, setSedang] = useState(false);
@@ -144,7 +147,7 @@ export function Modal({
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !sedang && onClose()}>
-      <form ref={formRef} className="modal" role="dialog" aria-modal="true" aria-label={title} aria-busy={sedang} onSubmit={handle}>
+      <form ref={formRef} className={`modal ${lebar ? "lebar" : ""}`} role="dialog" aria-modal="true" aria-label={title} aria-busy={sedang} onSubmit={handle}>
         <div className="mhead">
           <h3>{title}</h3>
           <button type="button" className="more" onClick={onClose} aria-label="Tutup" disabled={sedang}>
@@ -162,6 +165,56 @@ export function Modal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* ---------- Dialog tampilan (bukan form), mis. rincian paket ---------- */
+export function Dialog({
+  title,
+  subtitle,
+  onClose,
+  children,
+  aksi,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  /** tombol di kanan judul */
+  aksi?: ReactNode;
+}) {
+  const tutupRef = useRef(onClose);
+  tutupRef.current = onClose;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    // Esc hanya menutup dialog paling atas (form di atas dialog menangani Esc-nya sendiri)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector(".pratinjau")) return;
+      const semua = document.querySelectorAll(".scrim");
+      if (semua[semua.length - 1] === ref.current?.parentElement) tutupRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} className="modal lebar dialog" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} tabIndex={-1}>
+        <div className="mhead">
+          <div className="dialog-judul">
+            <h3>{title}</h3>
+            {subtitle && <div className="dialog-sub">{subtitle}</div>}
+          </div>
+          <div className="dialog-aksi">
+            {aksi}
+            <button type="button" className="more" onClick={onClose} aria-label="Tutup">
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }

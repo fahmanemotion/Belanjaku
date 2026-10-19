@@ -13,6 +13,7 @@ import { inisial } from "@/lib/format";
 
 export const MODUL: { kode: Modul; href: string; label: string; icon: IconName }[] = [
   { kode: "dashboard", href: "/dashboard", label: "Dashboard", icon: "grid" },
+  { kode: "pengadaan", href: "/pengadaan", label: "Pengadaan", icon: "box" },
   { kode: "belanja", href: "/belanja", label: "Belanja", icon: "cart" },
   { kode: "aktivitas", href: "/aktivitas", label: "Aktivitas", icon: "history" },
   { kode: "pencairan", href: "/pencairan", label: "Pencairan", icon: "wallet" },

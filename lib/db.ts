@@ -6,7 +6,7 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { labelJenisAkun } from "./data";
 import type { DataPok } from "./mak";
-import type { Aktivitas, JenisPencairan, Kegiatan, Pengguna, Peran, Referensi, Rekap, StatusBelanja, SumberDana } from "./types";
+import type { Aktivitas, ItemPaket, JenisPencairan, Kegiatan, Paket, Pengguna, Peran, Referensi, Rekap, StatusBelanja, SumberDana } from "./types";
 
 /* ---------- Galat ---------- */
 type Galat = Pick<PostgrestError, "message"> & { code?: string };
@@ -63,6 +63,8 @@ interface BarisVPengajuan {
   pencairan_jenis: JenisPencairan | null;
   pengesahan_nomor: string | null;
   pengesahan_tanggal: string | null;
+  /** kolom baru v22 (kosong bila database belum diperbarui) */
+  paket_id?: string | null;
 }
 
 export function keKegiatan(r: BarisVPengajuan): Kegiatan {
@@ -83,6 +85,7 @@ export function keKegiatan(r: BarisVPengajuan): Kegiatan {
     dibuatOleh: r.dibuat_oleh,
     pencairan: r.pencairan_nomor ? { nomor: r.pencairan_nomor, tanggal: r.pencairan_tanggal!, jenis: r.pencairan_jenis! } : undefined,
     pengesahan: r.pengesahan_nomor ? { nomor: r.pengesahan_nomor, tanggal: r.pengesahan_tanggal! } : undefined,
+    paketId: r.paket_id ?? undefined,
   };
 }
 
@@ -126,6 +129,10 @@ interface BarisPengguna {
   peran: Peran;
   aktif: boolean;
   deleted_at: string | null;
+  nip?: string | null;
+  pangkat?: string | null;
+  sk_nomor?: string | null;
+  sk_tanggal?: string | null;
 }
 
 export const kePengguna = (r: BarisPengguna): Pengguna => ({
@@ -135,6 +142,10 @@ export const kePengguna = (r: BarisPengguna): Pengguna => ({
   peran: r.peran,
   aktif: r.aktif && !r.deleted_at,
   dihapus: Boolean(r.deleted_at),
+  nip: r.nip ?? undefined,
+  pangkat: r.pangkat ?? undefined,
+  skNomor: r.sk_nomor ?? undefined,
+  skTanggal: r.sk_tanggal ?? undefined,
 });
 
 interface BarisAktivitas {
@@ -186,7 +197,7 @@ export async function muatRekap(sb: SupabaseClient): Promise<Rekap[]> {
 }
 
 export async function muatPengguna(sb: SupabaseClient): Promise<Pengguna[]> {
-  const { data, error } = await sb.from("pengguna").select("id, nama, email, peran, aktif, deleted_at").order("nama");
+  const { data, error } = await sb.from("pengguna").select("id, nama, email, peran, aktif, deleted_at, nip, pangkat, sk_nomor, sk_tanggal").order("nama");
   if (error) throw error;
   return (data as BarisPengguna[]).map(kePengguna);
 }
@@ -195,14 +206,26 @@ export async function muatReferensi(sb: SupabaseClient): Promise<Referensi> {
   const [unit, akun, penyedia, dana] = await Promise.all([
     sb.from("unit_kerja").select("kode, nama, penanggung_jawab").eq("aktif", true).order("kode"),
     sb.from("akun").select("kode, uraian").order("kode"),
-    sb.from("penyedia").select("id, nama, bidang, kota, aktif").order("nama"),
+    sb.from("penyedia").select("id, nama, bidang, kota, aktif, alamat, pimpinan, jabatan, npwp, bank, rekening").order("nama"),
     sb.from("sumber_dana").select("kode, nama, warna").order("kode"),
   ]);
   for (const r of [unit, akun, penyedia, dana]) if (r.error) throw r.error;
   return {
     unit: (unit.data ?? []).map((u) => ({ kode: u.kode, nama: u.nama, penanggungJawab: u.penanggung_jawab })),
     akun: (akun.data ?? []).map((a) => ({ kode: a.kode, uraian: a.uraian, jenis: labelJenisAkun(a.kode) })),
-    penyedia: (penyedia.data ?? []).map((p) => ({ id: p.id, nama: p.nama, bidang: p.bidang, kota: p.kota, aktif: p.aktif })),
+    penyedia: (penyedia.data ?? []).map((p) => ({
+      id: p.id,
+      nama: p.nama,
+      bidang: p.bidang,
+      kota: p.kota,
+      aktif: p.aktif,
+      alamat: p.alamat ?? "",
+      pimpinan: p.pimpinan ?? "",
+      jabatan: p.jabatan ?? "",
+      npwp: p.npwp ?? "",
+      bank: p.bank ?? "",
+      rekening: p.rekening ?? "",
+    })),
     dana: (dana.data ?? []).map((d) => ({ kode: d.kode, nama: d.nama, warna: d.warna })),
   };
 }
@@ -230,6 +253,55 @@ export async function muatPok(sb: SupabaseClient): Promise<DataPok | null> {
     mak: d.mak.map(([k, p, l, r]) => [k, Number(p), Number(l), Number(r)]),
     item: Object.fromEntries(Object.entries(d.item).map(([k, xs]) => [k, xs.map(([n, u, p, l, r]) => [n, u, Number(p), Number(l), Number(r)])])),
   };
+}
+
+/* ---------- Pengadaan ---------- */
+type Mentah<T> = { [K in keyof T]?: T[K] | null };
+
+/** Baris v_paket / hasil RPC → Paket (null → undefined, angka dijamin number) */
+export function rapikanPaket(r: Mentah<Paket> & { id: string }): Paket {
+  const item = ((r.item ?? []) as Mentah<ItemPaket>[]).map((x) => ({
+    uraian: x.uraian ?? "",
+    spesifikasi: x.spesifikasi ?? [],
+    jumlah: Number(x.jumlah ?? 0),
+    satuan: x.satuan ?? "",
+    hargaHps: Number(x.hargaHps ?? 0),
+    harga: x.harga === undefined || x.harga === null ? undefined : Number(x.harga),
+    ket: x.ket ?? "",
+  }));
+  return {
+    id: r.id,
+    tahun: Number(r.tahun),
+    tahap: Number(r.tahap) as Paket["tahap"],
+    pekerjaan: r.pekerjaan ?? "",
+    unit: r.unit ?? "",
+    dana: r.dana as Paket["dana"],
+    mak: r.mak ?? "",
+    item,
+    ppn: Boolean(r.ppn),
+    nd: r.nd ?? { nomor: "", tanggal: "" },
+    ppkId: r.ppkId ?? "",
+    ppId: r.ppId ?? undefined,
+    penyediaId: r.penyediaId ?? undefined,
+    sp: r.sp ? { ...r.sp, batasHari: Number(r.sp.batasHari) } : undefined,
+    nota: r.nota ?? undefined,
+    kwitansi: r.kwitansi ?? undefined,
+    bap: r.bap ?? undefined,
+    bast: r.bast ?? undefined,
+    pengajuanId: r.pengajuanId ?? undefined,
+    arsip: r.arsip ?? undefined,
+    dibuatOleh: r.dibuatOleh ?? "",
+    dibuatPada: r.dibuatPada ?? "",
+    diubahPada: r.diubahPada ?? "",
+  };
+}
+
+/** Semua paket pengadaan, terbaru di atas */
+export async function muatPaket(sb: SupabaseClient): Promise<Paket[]> {
+  const baris = await ambilSemua<Mentah<Paket> & { id: string }>((dari, sampai) =>
+    sb.from("v_paket").select("*").order("id", { ascending: false }).range(dari, sampai),
+  );
+  return baris.map(rapikanPaket);
 }
 
 export async function muatIzin(sb: SupabaseClient, peran: Peran): Promise<string[]> {

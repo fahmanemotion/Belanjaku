@@ -7,27 +7,31 @@
  * - Membaca data: tabel/view Supabase yang dilindungi Row Level Security.
  * - Mengubah data: fungsi RPC di database (supabase/migrations) yang memeriksa peran, status dokumen,
  *   dan menulis Riwayat Aktivitas dalam satu transaksi. Pemeriksaan izin di sini hanya untuk tampilan.
- * - Alur: Belanja (dicatat pengadaan) → rekap pencairan → rekap pengesahan.
+ * - Alur: Pengadaan (Nota Dinas & HPS → Surat Pesanan → Nota Pembelian → Kwitansi, BAP & BAST)
+ *         atau Belanja (dicatat Operator Pengadaan) → rekap pencairan → rekap pengesahan.
  * - Kelola pengguna: API server app/api/pengguna (butuh kunci rahasia, hanya Administrator).
  * - Realtime: perubahan oleh pengguna lain langsung dimuat ulang; saat tab kembali aktif data disegarkan.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { bolehModul, type Izin, type Modul } from "@/lib/akses";
 import {
+  kePengguna,
   muatAktivitas,
   muatIzin,
   muatKegiatan,
+  muatPaket,
   muatPengguna,
   muatPok,
   muatReferensi,
   muatRekap,
   pesanGalat,
   rapikanKegiatan,
+  rapikanPaket,
   rapikanRekap,
 } from "@/lib/db";
 import { susunBarisPok, susunDaftarMak, type BarisPok, type DataPok, type InfoMak } from "@/lib/mak";
 import { supabase, supabaseTerkonfigurasi } from "@/lib/supabase";
-import type { Aktivitas, AnggaranMak, JenisPencairan, JenisRekap, Kegiatan, Pengguna, Peran, Referensi, Rekap } from "@/lib/types";
+import type { Aktivitas, AnggaranMak, DataPenyedia, ItemPaket, JenisPencairan, JenisRekap, Kegiatan, Paket, Pengguna, Peran, Referensi, Rekap } from "@/lib/types";
 
 export type KegiatanBaru = Omit<Kegiatan, "id" | "status" | "pencairan" | "pengesahan" | "dibuatOleh">;
 export type JenisReferensi = keyof Referensi;
@@ -49,6 +53,53 @@ export interface IzinUbah {
 
 type Hasil = { ok: true; nama?: string } | { ok: false; pesan: string };
 
+/* ---------- Isian tahap pengadaan (dikirim ke RPC simpan_*) ---------- */
+export interface IsianNotaDinas {
+  pekerjaan: string;
+  unit: string;
+  dana: string;
+  mak: string;
+  ndNomor: string;
+  ndTanggal: string;
+  ppn: boolean;
+  item: Omit<ItemPaket, "harga">[];
+  /** wajib bila yang menyimpan Administrator */
+  ppkId?: string;
+}
+export interface IsianPesanan {
+  spNomor: string;
+  spTanggal: string;
+  batasHari: number;
+  /** id kosong = penyedia baru (langsung ditambahkan ke Referensi) */
+  penyedia: DataPenyedia;
+  /** wajib bila yang menyimpan Administrator */
+  ppId?: string;
+}
+export interface IsianPembelian {
+  notaTanggal: string;
+  ppn: boolean;
+  /** harga satuan pembelian per barang, urut sesuai HPS */
+  harga: number[];
+}
+export interface IsianKwitansi {
+  kwNomor: string;
+  kwTanggal: string;
+  bapNomor: string;
+  bapTanggal: string;
+  bastNomor: string;
+  bastTanggal: string;
+  /** tanda √ pada kolom MEMENUHI di Lampiran BAP */
+  centang: boolean;
+}
+export interface IsianPejabat {
+  nip: string;
+  pangkat: string;
+  skNomor: string;
+  skTanggal: string;
+}
+/** Hasil simpan tahap: paket terbaru + jumlah kolom yang berubah (0 = tidak ada perubahan) */
+export type HasilPaket = { paket: Paket; berubah: number } | null;
+
 interface StoreValue {
   kegiatan: Kegiatan[];
   /** rekap pencairan & pengesahan, terbaru di atas */
@@ -57,6 +108,8 @@ interface StoreValue {
   pengguna: Pengguna[];
   referensi: Referensi;
   aktivitas: Aktivitas[];
+  /** paket pengadaan (alur Kwitansi), terbaru di atas */
+  paket: Paket[];
 
   /* Sesi & hak akses */
   /** pemeriksaan sesi awal selesai (mencegah halaman login berkedip) */
@@ -91,9 +144,21 @@ interface StoreValue {
   /** sisa anggaran per MAK untuk kegiatan yang akan disahkan (pemeriksaan yang sama dengan saat Sahkan) */
   cekAnggaran: (ids: string[]) => Promise<{ ok: true; data: AnggaranMak[] } | { ok: false; pesan: string }>;
 
+  /* Pengadaan (alur dokumen Kwitansi) */
+  simpanNotaDinas: (id: string | null, data: IsianNotaDinas) => Promise<HasilPaket>;
+  simpanPesanan: (id: string, data: IsianPesanan) => Promise<HasilPaket>;
+  simpanPembelian: (id: string, data: IsianPembelian) => Promise<HasilPaket>;
+  simpanKwitansi: (id: string, data: IsianKwitansi) => Promise<HasilPaket>;
+  /** mundur satu tahap (isian tetap tersimpan); tahap 4 menghapus dokumen belanjanya */
+  batalTahapPaket: (id: string, alasan: string) => Promise<Paket | null>;
+  hapusPaket: (id: string, alasan: string) => Promise<boolean>;
+  catatCetakPaket: (p: Paket, dokumen: string[]) => void;
+  /** NIP, pangkat, SK — oleh Administrator atau pemilik akun sendiri */
+  simpanDataPejabat: (id: string, data: IsianPejabat) => Promise<{ berubah: number } | null>;
+
   /* Pengguna (lewat API server) */
-  tambahPengguna: (p: { nama: string; email: string; peran: Peran; sandi: string }) => Promise<boolean>;
-  ubahPengguna: (id: string, data: Omit<Pengguna, "id" | "dihapus">) => Promise<boolean>;
+  tambahPengguna: (p: { nama: string; email: string; peran: Peran; sandi: string }) => Promise<Pengguna | null>;
+  ubahPengguna: (id: string, data: Pick<Pengguna, "nama" | "email" | "peran" | "aktif">) => Promise<boolean>;
   toggleAktifPengguna: (id: string) => Promise<boolean>;
   hapusPengguna: (id: string) => Promise<boolean>;
   aturUlangSandi: (id: string, sandi: string) => Promise<boolean>;
@@ -143,6 +208,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   const [pengguna, setPengguna] = useState<Pengguna[]>([]);
   const [referensi, setReferensi] = useState<Referensi>(REFERENSI_KOSONG);
   const [aktivitas, setAktivitas] = useState<Aktivitas[]>([]);
+  const [paket, setPaket] = useState<Paket[]>([]);
   const [dataPok, setDataPok] = useState<DataPok | null>(null);
   const [profil, setProfil] = useState<Pengguna | null>(null);
   const [izinSaya, setIzinSaya] = useState<Set<string>>(new Set());
@@ -174,6 +240,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     setPengguna([]);
     setReferensi(REFERENSI_KOSONG);
     setAktivitas([]);
+    setPaket([]);
     setDataPok(null);
   }, []);
 
@@ -194,6 +261,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
       },
       referensi: async () => setReferensi(await muatReferensi(sb())),
       aktivitas: async () => setAktivitas(await muatAktivitas(sb())),
+      paket: async () => setPaket(await muatPaket(sb())),
       pok: async () => setDataPok(await muatPok(sb())),
     };
   }, [toast]);
@@ -297,6 +365,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "akun" }, () => jadwal("referensi"))
       .on("postgres_changes", { event: "*", schema: "public", table: "sumber_dana" }, () => jadwal("referensi"))
       .on("postgres_changes", { event: "*", schema: "public", table: "pok_unggahan" }, () => jadwal("pok"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "paket_pengadaan" }, () => jadwal("paket"))
       .subscribe();
     let terakhir = Date.now();
     const kembali = () => {
@@ -420,6 +489,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const izinUbah: StoreValue["izinUbah"] = (k) => {
+    if (k.paketId) return { boleh: false, alasan: `${k.id} terbit dari paket pengadaan ${k.paketId}; ubah atau batalkan kwitansinya lewat modul Pengadaan` };
     if (!boleh("belanja.buat")) return { boleh: false, alasan: `Peran ${penggunaAktif.peran} tidak dapat mengubah atau menghapus dokumen belanja` };
     if (k.dibuatOleh !== penggunaAktif.id)
       return { boleh: false, alasan: `Hanya ${infoPengguna(k.dibuatOleh).nama} (pencatat dokumen) yang dapat mengubah atau menghapus ${k.id}` };
@@ -490,6 +560,78 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  /* ---------- Pengadaan ---------- */
+  const pasangPaket = (p: Paket) =>
+    setPaket((prev) => {
+      const i = prev.findIndex((x) => x.id === p.id);
+      if (i < 0) return [p, ...prev];
+      const salin = prev.slice();
+      salin[i] = p;
+      return salin;
+    });
+  type BalasanPaket = { paket: Paket; berubah?: number; aktivitas: Aktivitas[]; pengajuan?: Kegiatan; penyedia?: boolean };
+  const terimaPaket = (r: BalasanPaket | null): HasilPaket => {
+    if (!r) return null;
+    const p = rapikanPaket(r.paket);
+    pasangPaket(p);
+    if (r.pengajuan) pasangKegiatan(rapikanKegiatan(r.pengajuan));
+    if (r.penyedia) segarkan.referensi().catch(() => {});
+    tambahLog(r.aktivitas);
+    return { paket: p, berubah: r.berubah ?? 1 };
+  };
+
+  const simpanNotaDinas: StoreValue["simpanNotaDinas"] = async (id, data) => {
+    if (!wajib("pengadaan.ppk", "menerbitkan nota dinas pengadaan")) return null;
+    return terimaPaket(await rpc<BalasanPaket>("simpan_nota_dinas", { p_id: id, p_data: data }));
+  };
+  const simpanPesanan: StoreValue["simpanPesanan"] = async (id, data) => {
+    if (!wajib("pengadaan.pp", "menerbitkan surat pesanan")) return null;
+    return terimaPaket(await rpc<BalasanPaket>("simpan_pesanan", { p_id: id, p_data: data }));
+  };
+  const simpanPembelian: StoreValue["simpanPembelian"] = async (id, data) => {
+    if (!wajib("pengadaan.pp", "mencatat nota pembelian")) return null;
+    return terimaPaket(await rpc<BalasanPaket>("simpan_pembelian", { p_id: id, p_data: data }));
+  };
+  const simpanKwitansi: StoreValue["simpanKwitansi"] = async (id, data) => {
+    if (!wajib("pengadaan.ppk", "menerbitkan kwitansi")) return null;
+    return terimaPaket(await rpc<BalasanPaket>("simpan_kwitansi", { p_id: id, p_data: data }));
+  };
+  const batalTahapPaket: StoreValue["batalTahapPaket"] = async (id, alasan) => {
+    const r = await rpc<{ paket: Paket; aktivitas: Aktivitas[]; pengajuanDihapus?: string }>("batal_tahap_paket", { p_id: id, p_alasan: alasan.trim() });
+    if (!r) return null;
+    const p = rapikanPaket(r.paket);
+    pasangPaket(p);
+    if (r.pengajuanDihapus) setKegiatan((prev) => prev.filter((x) => x.id !== r.pengajuanDihapus));
+    tambahLog(r.aktivitas);
+    return p;
+  };
+  const hapusPaket: StoreValue["hapusPaket"] = async (id, alasan) => {
+    if (!wajib("pengadaan.ppk", "menghapus paket pengadaan")) return false;
+    const r = await rpc<{ aktivitas: Aktivitas[] }>("hapus_paket", { p_id: id, p_alasan: alasan.trim() });
+    if (!r) return false;
+    setPaket((prev) => prev.filter((x) => x.id !== id));
+    tambahLog(r.aktivitas);
+    return true;
+  };
+  const catatCetakPaket: StoreValue["catatCetakPaket"] = (p, dokumen) => {
+    void rpc<Aktivitas>("catat_aktivitas", {
+      p_jenis: "Cetak",
+      p_aksi: "mencetak dokumen pengadaan",
+      p_objek_id: p.id,
+      p_objek_label: p.pekerjaan,
+      p_catatan: dokumen.join(", "),
+    }).then((a) => a && tambahLog([a]));
+  };
+  const simpanDataPejabat: StoreValue["simpanDataPejabat"] = async (id, data) => {
+    const r = await rpc<{ berubah: number; pengguna: Parameters<typeof kePengguna>[0]; aktivitas: Aktivitas[] }>("simpan_data_pejabat", { p_id: id, p_data: data });
+    if (!r) return null;
+    const u = kePengguna(r.pengguna);
+    pasangPengguna(u);
+    if (u.id === profilRef.current?.id) setProfil(u);
+    tambahLog(r.aktivitas);
+    return { berubah: r.berubah };
+  };
+
   /* ---------- Pengguna (API server: butuh kunci rahasia Supabase) ---------- */
   const api = async <T,>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<T | null> => {
     const { data } = await supabase().auth.getSession();
@@ -519,12 +661,12 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     setPengguna((prev) => (prev.some((x) => x.id === u.id) ? prev.map((x) => (x.id === u.id ? u : x)) : [...prev, u]));
 
   const tambahPengguna: StoreValue["tambahPengguna"] = async (p) => {
-    if (!wajib("pengguna.kelola", "mengelola pengguna")) return false;
+    if (!wajib("pengguna.kelola", "mengelola pengguna")) return null;
     const r = await api<{ pengguna: Pengguna; aktivitas: Aktivitas[] }>("/api/pengguna", "POST", p);
-    if (!r) return false;
+    if (!r) return null;
     pasangPengguna(r.pengguna);
     tambahLog(r.aktivitas);
-    return true;
+    return r.pengguna;
   };
 
   const ubahPengguna: StoreValue["ubahPengguna"] = async (id, data) => {
@@ -616,6 +758,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     pengguna,
     referensi,
     aktivitas,
+    paket,
     siap,
     terkonfigurasi: supabaseTerkonfigurasi,
     sudahMasuk,
@@ -636,6 +779,14 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     buatRekap,
     batalRekap,
     cekAnggaran,
+    simpanNotaDinas,
+    simpanPesanan,
+    simpanPembelian,
+    simpanKwitansi,
+    batalTahapPaket,
+    hapusPaket,
+    catatCetakPaket,
+    simpanDataPejabat,
     tambahPengguna,
     ubahPengguna,
     toggleAktifPengguna,

@@ -20,7 +20,7 @@ const TAB: { value: Jenis; label: string }[] = [
 const KOLOM: Record<Jenis, string[]> = {
   akun: ["Kode Akun", "Uraian", "Jenis Belanja"],
   unit: ["Kode", "Unit Kerja", "Penanggung Jawab"],
-  penyedia: ["Nama Penyedia", "Bidang", "Kota", "Status"],
+  penyedia: ["Nama Penyedia", "Pimpinan", "Bidang", "Kota", "Status"],
   dana: ["Kode", "Sumber Dana", "Warna"],
 };
 
@@ -63,9 +63,16 @@ export default function Referensi() {
       </tr>
     ));
   if (tab === "penyedia")
-    rows = referensi.penyedia.filter((r) => cocok([r.nama, r.bidang, r.kota])).map((r) => (
+    rows = referensi.penyedia.filter((r) => cocok([r.nama, r.bidang, r.kota, r.pimpinan, r.alamat, r.npwp])).map((r) => (
       <tr key={r.id}>
-        <td className="main"><b>{r.nama}</b></td>
+        <td className="main">
+          <b>{r.nama}</b>
+          {r.alamat && <small className="sub-ref">{r.alamat}</small>}
+        </td>
+        <td data-label="Pimpinan">
+          {r.pimpinan || "-"}
+          {r.pimpinan && r.jabatan && <small className="sub-ref">{r.jabatan}</small>}
+        </td>
         <td data-label="Bidang">{r.bidang || "-"}</td>
         <td data-label="Kota">{r.kota || "-"}</td>
         <td data-label="Status"><Status tone={r.aktif ? "g" : "m"}>{r.aktif ? "Aktif" : "Tidak aktif"}</Status></td>
@@ -130,7 +137,7 @@ export default function Referensi() {
 }
 
 /** Isian form per jenis referensi; kunci = nama kolom yang dikirim ke database */
-const ISIAN: Record<Jenis, { kunci: string; label: string; contoh?: string; kode?: boolean }[]> = {
+const ISIAN: Record<Jenis, { kunci: string; label: string; contoh?: string; kode?: boolean; opsional?: boolean; lebar?: boolean }[]> = {
   akun: [
     { kunci: "kode", label: "Kode akun (6 digit)", contoh: "521211", kode: true },
     { kunci: "uraian", label: "Uraian", contoh: "Belanja Bahan" },
@@ -138,12 +145,18 @@ const ISIAN: Record<Jenis, { kunci: string; label: string; contoh?: string; kode
   unit: [
     { kunci: "kode", label: "Kode unit", contoh: "UK09", kode: true },
     { kunci: "nama", label: "Nama unit kerja" },
-    { kunci: "penanggungJawab", label: "Penanggung jawab", contoh: "Kepala Unit" },
+    { kunci: "penanggungJawab", label: "Penanggung jawab", contoh: "Kepala Unit", opsional: true },
   ],
   penyedia: [
-    { kunci: "nama", label: "Nama penyedia", contoh: "CV …" },
-    { kunci: "bidang", label: "Bidang usaha" },
-    { kunci: "kota", label: "Kota" },
+    { kunci: "nama", label: "Nama penyedia", contoh: "CV …", lebar: true },
+    { kunci: "pimpinan", label: "Nama pimpinan", contoh: "dicetak di dokumen pengadaan", opsional: true },
+    { kunci: "jabatan", label: "Jabatan pimpinan", contoh: "Direktur", opsional: true },
+    { kunci: "alamat", label: "Alamat", opsional: true, lebar: true },
+    { kunci: "bidang", label: "Bidang usaha", opsional: true },
+    { kunci: "kota", label: "Kota", opsional: true },
+    { kunci: "npwp", label: "NPWP", opsional: true },
+    { kunci: "bank", label: "Bank", contoh: "BANK BNI", opsional: true },
+    { kunci: "rekening", label: "No. rekening", opsional: true },
   ],
   dana: [
     { kunci: "kode", label: "Kode", contoh: "PNBP", kode: true },
@@ -168,7 +181,7 @@ function FormReferensi({ jenis, awal, onClose }: { jenis: Jenis; awal?: Baris; o
 
   const simpan = async () => {
     const v = Object.fromEntries(Object.entries(nilai).map(([k, x]) => [k, x.trim()]));
-    const wajib = isian.filter((f) => f.kunci !== "penanggungJawab" && f.kunci !== "bidang" && f.kunci !== "kota");
+    const wajib = isian.filter((f) => !f.opsional);
     if (wajib.some((f) => !v[f.kunci])) {
       toast(`Lengkapi ${wajib.filter((f) => !v[f.kunci]).map((f) => f.label.toLowerCase()).join(", ")}`);
       return;
@@ -191,7 +204,7 @@ function FormReferensi({ jenis, awal, onClose }: { jenis: Jenis; awal?: Baris; o
       onClose={onClose}
     >
       {isian.map((f, i) => (
-        <Field key={f.kunci} label={f.label} full={i === 1 || isian.length === 2}>
+        <Field key={f.kunci} label={f.label} full={jenis === "penyedia" ? Boolean(f.lebar) : i === 1 || isian.length === 2}>
           <input
             value={nilai[f.kunci] ?? ""}
             onChange={(e) => setNilai((n) => ({ ...n, [f.kunci]: f.kode ? e.target.value.toUpperCase() : e.target.value }))}

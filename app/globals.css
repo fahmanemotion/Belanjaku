@@ -893,6 +893,11 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .bottomnav a { font-size: 9px; letter-spacing: -0.02em; }
   .bottomnav .bi { width: 36px; }
 }
+/* Administrator: 8 modul di navigasi bawah → huruf sedikit dirapatkan agar label tidak terpotong */
+@media (max-width: 480px) {
+  .bottomnav:has(> a:nth-child(8)) a { font-size: 8.6px; letter-spacing: -0.035em; }
+  .bottomnav:has(> a:nth-child(8)) .bi { width: 36px; }
+}
 
 /* Halaman masuk di tablet & HP: panel merek disembunyikan, logo kecil di atas form */
 @media (max-width: 1024px) {
@@ -1162,4 +1167,271 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .ttd .ruang { height: 54px; }
   .kaki { margin-top: 16px; }
   .jejak tr, .rincian tr { break-inside: avoid; }
+}
+
+/* =====================================================================
+   Modul Pengadaan (alur dokumen Kwitansi)
+   ===================================================================== */
+.st.p { color: color-mix(in srgb, #8b5cf6 80%, var(--ink)); }
+.modal.lebar { width: min(780px, 100%); }
+.dialog .mhead { align-items: flex-start; }
+.dialog-judul { min-width: 0; }
+.dialog-judul h3 { line-height: 1.25; }
+.dialog-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.dialog-sub .mono { font-size: 11.5px; }
+.dialog-aksi { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* Isian nomor dokumen berpola */
+.form .isian-grup { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.isian-nomor { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 6px 10px; border: 1px solid var(--line); background: var(--sub); border-radius: 12px; }
+.isian-nomor:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.form .isian-nomor input { flex: 1 1 110px; min-width: 90px; width: auto; padding: 5px 8px; border-radius: 8px; background: var(--panel); }
+.form .isian-nomor input:focus-visible { outline: none; }
+.nomor-tetap { font-size: 12px; color: var(--ink); white-space: nowrap; }
+.tautan { padding: 0; font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.isian-catatan .mono { font-size: 11px; color: var(--ink); word-break: break-all; }
+
+/* Daftar barang HPS */
+.daftar-item { display: grid; gap: 10px; }
+.daftar-item-kepala { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--ink); }
+.daftar-item-kepala small { color: var(--muted); font-weight: 500; }
+.kartu-item { margin: 0; padding: 12px 14px 12px; border: 1px solid var(--line); border-radius: 16px; min-width: 0; }
+.kartu-item legend { padding: 0 6px; font-size: 12px; font-weight: 700; color: var(--accent); }
+.kartu-item-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.kartu-item-grid .lebar { grid-column: span 2; }
+.kartu-item-kaki { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.kartu-item-kaki b { color: var(--ink); }
+.tambah-item { justify-self: start; }
+.form label.cek-baris { flex-direction: row; align-items: center; gap: 10px; color: var(--ink); font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.form label.cek-baris input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+.form label.cek-baris.sejajar { align-self: end; padding-bottom: 10px; }
+.terbilang-ringkas { display: block; font-size: 12px; font-style: italic; color: var(--muted); line-height: 1.4; }
+.form .peringatan-isian { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: color-mix(in srgb, var(--warn) 70%, var(--ink)); font-size: 12.5px; font-weight: 600; }
+.baris-harga { display: grid; grid-template-columns: minmax(0, 1fr) 200px 130px; align-items: end; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.baris-harga > div b { display: block; font-size: 13.5px; color: var(--ink); }
+.baris-harga > div small { font-size: 12px; color: var(--muted); }
+.baris-harga-jumlah { padding-bottom: 10px; text-align: right; font-weight: 700; color: var(--ink); font-size: 13px; }
+
+/* Ringkasan alur 4 tahap */
+.alur-paket { list-style: none; margin: 0 0 var(--gap); padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; counter-reset: none; }
+.alur-kartu { width: 100%; height: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); text-align: left; border: 1.5px solid transparent; transition: border-color 0.15s; }
+.alur-kartu:hover { border-color: var(--line); }
+.alur-kartu.on { border-color: var(--accent); }
+.alur-no { flex: none; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--sub); font-family: var(--f-display); font-weight: 800; color: var(--accent); }
+.alur-kartu.on .alur-no { background: var(--accent); color: var(--on-accent); }
+.alur-isi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alur-isi small { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.alur-isi b { font-family: var(--f-display); font-size: 15.5px; line-height: 1.25; }
+.alur-angka { font-size: 13px; font-weight: 600; color: var(--ink); }
+.alur-catatan { font-size: 11.5px; color: var(--muted); }
+.peringatan-data { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 var(--gap); padding: 12px 14px; border-radius: 16px; background: var(--warn-bg); color: color-mix(in srgb, var(--warn) 65%, var(--ink)); font-size: 13px; font-weight: 600; }
+.peringatan-data svg { width: 17px; height: 17px; flex: none; }
+.peringatan-data span { flex: 1 1 260px; }
+
+/* Tabel paket */
+.tabel-paket { min-width: 1040px; }
+.tabel-paket td { font-size: 13px; }
+.tabel-paket td.main { min-width: 260px; }
+.tautan-paket { padding: 0; font: inherit; font-weight: 700; text-align: left; color: var(--ink); }
+.tautan-paket:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.tabel-paket .mak-keg { white-space: normal; }
+.tabel-paket td[data-label="Sumber Dana"] .note { display: block; margin-top: 4px; }
+.sel-pejabat span { display: block; white-space: nowrap; }
+.sel-pejabat small { display: inline-block; min-width: 28px; font-size: 10px; font-weight: 700; color: var(--muted); }
+.tabel-paket td.r .note { display: block; }
+.tabel-paket th.th-aksi, .tabel-paket td.sel-aksi { text-align: right; }
+
+/* Pengguna & Referensi: data penanda tangan / pembayaran */
+.data-pejabat { margin: -4px 0 0; font-size: 12px; font-family: var(--f-mono); color: var(--ink); }
+.data-pejabat.kurang { font-family: var(--f-sans); color: var(--warn); font-weight: 600; }
+.sub-ref { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+
+/* Rincian paket: langkah 1–4 */
+.tahap-paket { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 0; }
+.langkah { position: relative; display: flex; gap: 14px; padding-bottom: 16px; }
+.langkah:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; background: var(--line); }
+.langkah.selesai:not(:last-child)::before { background: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.langkah-no { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--sub); color: var(--muted); font-weight: 800; font-family: var(--f-display); }
+.langkah-no svg { width: 16px; height: 16px; }
+.langkah.selesai .langkah-no { background: var(--good); color: #fff; }
+.langkah.berjalan .langkah-no { background: var(--accent); color: var(--on-accent); }
+.langkah-isi { flex: 1; min-width: 0; padding: 4px 0 0; }
+.langkah-kepala { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.langkah-kepala b { font-size: 14.5px; }
+.langkah-kepala small { font-size: 12px; color: var(--muted); }
+.langkah.belum .langkah-kepala b { color: var(--muted); }
+.rinci { display: grid; gap: 4px; margin: 8px 0 0; font-size: 13px; }
+.rinci > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; }
+.rinci dt { color: var(--muted); }
+.rinci dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.rinci .mono { font-size: 11.5px; }
+.tahap-tunggu { margin: 6px 0 0 !important; font-size: 12.5px; color: var(--muted) !important; }
+.tahap-aksi { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tahap-aksi:empty { display: none; }
+.judul-item { margin: 8px 0 10px; font-size: 14px; }
+.tabel-item { min-width: 600px; }
+.tabel-item td, .tabel-item th { padding: 9px 12px; font-size: 12.5px; }
+.tabel-item td { vertical-align: top; }
+.tabel-item .spek { display: block; color: var(--muted); font-size: 11.5px; }
+.tabel-item tfoot td { border-top: 1px solid var(--line); font-weight: 600; }
+.tabel-item tfoot tr.total td { font-weight: 800; color: var(--accent); }
+
+/* Pratinjau dokumen: pilihan dokumen & catatan */
+.pratinjau-dok .pratinjau-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.pilih-dok { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-dok { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--sub); font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.chip-dok svg { width: 13px; height: 13px; }
+.chip-dok.on { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.chip-dok.semua { border-style: dashed; background: none; }
+.pratinjau-catatan { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--warn-bg); color: color-mix(in srgb, var(--warn) 65%, var(--ink)); font-size: 12.5px; font-weight: 600; }
+.pratinjau-catatan svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.pratinjau-kosong { margin: 40px auto; text-align: center; color: #fff; font-weight: 600; }
+.pratinjau-dok { background: rgba(10, 10, 12, 0.84); }
+
+/* ---------- Halaman dokumen A4 (format berkas Excel; margin = @page di CetakPengadaan) ---------- */
+.dok-tumpuk { display: grid; justify-content: center; gap: 24px; }
+.dok-hal {
+  position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm; margin: 0 auto;
+  padding: 12mm 15mm 12mm 18mm; background: #fff; color: #000; color-scheme: light;
+  font-family: "Times New Roman", Times, "Liberation Serif", serif; font-size: 12pt; line-height: 1.3;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.4); overflow-wrap: break-word;
+  /* isi yang terlalu lebar dipotong, bukan membuat browser mengecilkan seluruh cetakan */
+  overflow-x: clip;
+}
+.dok-hal.ada-kaki { display: flex; flex-direction: column; }
+.dok-arial { font-family: Arial, "Liberation Sans", Helvetica, sans-serif; font-size: 11pt; }
+.dok-hal p { margin: 0; }
+.dok-hal .tengah { text-align: center; }
+.dok-hal .kanan { text-align: right; }
+.dok-hal .rata { text-align: justify; }
+.dok-hal .miring { font-style: italic; }
+.dok-hal .jarak { margin-top: 1.3em; }
+.dok-hal .menjorok { text-indent: 3em; }
+.dok-hal .sela { display: inline-block; width: 1.6em; }
+.dok-hal .sela-kecil { display: inline-block; width: 0.6em; }
+.dok-hal table { min-width: 0; width: 100%; border-collapse: collapse; }
+.dok-hal th, .dok-hal td { padding: 0; border: 0; background: none; color: #000; font-size: inherit; font-weight: 400; white-space: normal; text-align: left; vertical-align: top; }
+.dok-hal tbody tr:hover td { background: none; }
+.dok-kop { display: block; width: 100%; height: auto; margin-bottom: 5mm; }
+.dok-kaki { margin-top: auto; padding-top: 6mm; display: flex; align-items: center; gap: 4mm; break-inside: avoid; }
+.kaki-kan { width: 20mm; height: auto; flex: none; }
+.kaki-moto { flex: 1; min-width: 0; height: 9mm; }
+.kaki-moto text { font-family: "Brush Script MT", "Brush Script Std", "Segoe Script", cursive; font-style: italic; font-size: 80px; fill: #000; }
+.kaki-sgs { display: flex; gap: 2mm; flex: none; }
+.kaki-sgs img { height: 13mm; width: auto; }
+
+/* Tabel kunci : nilai */
+.dok-kv td:nth-child(2) { width: 4mm; text-align: center; }
+.nd-kv { margin-top: 4mm; }
+.nd-kv td:first-child { width: 17mm; }
+.hps-kv td:first-child { width: 30mm; }
+.ba-kv td:first-child, .lamp-kv td:first-child { width: 27mm; }
+.lamp-kv { margin: 1mm 0 4mm; }
+.lamp-kv td:nth-child(2) { width: 3mm; text-align: left; }
+
+/* Tanda tangan */
+.ttd-blok { text-align: center; break-inside: avoid; }
+.ttd-ruang { height: 17mm; }
+.ttd-nama { text-decoration: underline; text-underline-offset: 2px; }
+.ttd-kanan { display: flex; justify-content: flex-end; margin-top: 7mm; }
+.ttd-kanan .ttd-blok { width: 52%; }
+.ttd-tengah { display: flex; justify-content: center; margin-top: 6mm; }
+.ttd-tengah .ttd-blok { width: 52%; }
+.ttd-dua { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8mm; margin-top: 6mm; break-inside: avoid; }
+
+/* Tabel barang */
+.dok-tabel { margin-top: 4mm; table-layout: fixed; }
+.dok-tabel th, .dok-tabel td { border: 0.8pt solid #000; padding: 0.7mm 1.5mm; vertical-align: middle; overflow-wrap: anywhere; }
+.dok-tabel th { text-align: center; line-height: 1.15; }
+.dok-tabel th.kecil { font-size: 10pt; }
+.dok-tabel .baris-item td:first-child, .dok-tabel .baris-item td:nth-child(3), .dok-tabel .baris-item td:nth-child(4) { text-align: center; }
+.tabel-hps .baris-item td:nth-child(5), .tabel-hps .baris-item td:nth-child(6) { text-align: right; }
+.dok-tabel .baris-kosong td { height: 5mm; }
+.dok-tabel .baris-tipis td { height: 2.5mm; }
+.dok-tabel .baris-total td.tengah { text-align: center; }
+.rp { display: flex; justify-content: space-between; gap: 1.5mm; white-space: nowrap; }
+/* Blok tanpa garis antar-baris (Surat Pesanan, Nota, Lampiran BAP/BAST) */
+.tabel-blok tbody td { border-top: 0; border-bottom: 0; vertical-align: top; }
+.tabel-blok tbody .blok-jarak td { height: 7mm; }
+.tabel-blok tbody .blok-akhir td { border-bottom: 0.8pt solid #000; }
+.tabel-blok tbody .baris-total td { border: 0.8pt solid #000; vertical-align: middle; }
+.tabel-lamp-bap .baris-item td:nth-child(5) { text-align: center; font-family: "Segoe UI Symbol", "DejaVu Sans", sans-serif; }
+
+/* Nota Dinas */
+.nd-tanggal { text-align: right; padding-right: 6mm; }
+.nd-isi { margin: 6mm 14mm 0 19mm; }
+.nd-tempat { padding-left: 9mm; }
+.nd-daftar { list-style: none; margin: 1.3em 0 0; padding: 0 0 0 4mm; }
+.nd-daftar li { grid-template-columns: 5mm minmax(0, 1fr); }
+.nd-isi + .ttd-kanan { margin-top: 6mm; }
+
+/* Surat Pesanan & Nota */
+.sp-tujuan p { line-height: 1.45; }
+.sp-tempat { padding-left: 10mm; }
+.nota-tujuan { display: grid; grid-template-columns: 61% auto; align-items: start; }
+.nota-tujuan > span { text-align: right; padding-right: 1.5mm; }
+.nota-tempat { padding-left: 18mm; }
+.tabel-nota { margin-top: 5mm; }
+
+/* Kwitansi */
+.kw-kotak { border: 1pt solid #000; padding: 4mm 3mm 0; font-size: 11pt; }
+.kw-judul { margin-bottom: 8mm; }
+.kw-kepala { width: auto; margin-left: 29%; margin-bottom: 10mm; }
+.kw-kepala td:first-child { width: 33mm; }
+.kw-isi td:first-child { width: 33mm; }
+.kw-isi td:nth-child(2) { width: 3mm; }
+.kw-uang { display: inline-flex; justify-content: space-between; width: 36mm; }
+.kw-kotak .ttd-dua { margin-top: 5mm; padding: 0 2mm 4mm; }
+.kw-bayar { margin: 0 -3mm; padding: 2mm 3mm 6mm; border-top: 1pt solid #000; }
+.kw-bank { display: grid; grid-template-columns: 22mm minmax(0, 1fr) minmax(0, 1.1fr); }
+.kw-bank .kw-lebar { grid-column: span 2; }
+
+/* Lampiran kwitansi, BAP, BAST */
+.judul-lampiran { text-align: center; font-size: 11pt; }
+.tabel-lamp-kw { margin-top: 5mm; }
+.tabel-lamp-kw th { font-size: 11pt; }
+.judul-ba { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.bast-hari { display: flex; flex-wrap: wrap; column-gap: 6mm; }
+.bast-hari span:nth-child(4) { margin-left: 4mm; }
+.bast-pihak td:first-child { width: 7mm; text-align: right; padding-right: 2mm; }
+.bast-pihak td:nth-child(2) { width: 23mm; text-align: left; }
+.bast-pihak td:nth-child(3) { width: 6mm; text-align: center; }
+.bast-pihak .sela-baris td { height: 4mm; }
+.bast-poin { list-style: none; margin: 1.3em 0 0; padding: 0 0 0 3mm; }
+.bast-poin li, .nd-daftar li { display: grid; grid-template-columns: 6mm minmax(0, 1fr); }
+
+@media (max-width: 767px) {
+  .modal.lebar { width: 100%; }
+  .alur-paket { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .alur-kartu { padding: 12px; gap: 10px; }
+  .alur-no { width: 26px; height: 26px; border-radius: 8px; font-size: 13px; }
+  .alur-isi b { font-size: 14px; }
+  .kartu-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kartu-item-grid .lebar { grid-column: 1 / -1; }
+  .baris-harga { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .baris-harga > div { grid-column: 1 / -1; }
+  .rinci > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .dialog-aksi .btn { padding: 8px 10px; }
+  .dialog-aksi .teks-lebar { display: none; }
+  .pilih-dok { flex-wrap: nowrap; overflow-x: auto; margin: 0 -4px; padding: 0 4px 2px; scrollbar-width: none; }
+  .pilih-dok::-webkit-scrollbar { display: none; }
+  .chip-dok { flex: none; }
+  .pratinjau-dok .pratinjau-bar { grid-template-columns: minmax(0, 1fr); }
+  .pratinjau-dok .pratinjau-bar .tbar { width: 100%; }
+  .pratinjau-dok .pratinjau-bar .tbar .btn { flex: 1; }
+  .sel-pejabat span { white-space: normal; }
+  .tw.stack .tabel-paket td.sel-aksi .aksi-baris .btn { flex: 1; }
+}
+
+@media print {
+  /* latar gelap pratinjau tidak ikut tercetak (mis. bila opsi "Grafik latar" dinyalakan) */
+  .pratinjau.pratinjau-dok { background: none; }
+  .pratinjau-dok .pratinjau-bar { display: none; }
+  body.ada-cetak .pratinjau-dok .dok-tumpuk { display: block; zoom: 1 !important; }
+  .pratinjau-dok .dok-hal { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+  .pratinjau-dok .dok-hal + .dok-hal { break-before: page; }
+  /* tinggi area cetak A4 dikurangi margin atas & bawah (12 mm + 12 mm) → kaki halaman di dasar kertas */
+  .pratinjau-dok .dok-hal.ada-kaki { min-height: 272mm; }
+  .dok-hal img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .dok-tabel tr, .ttd-blok, .ttd-dua { break-inside: avoid; }
 }

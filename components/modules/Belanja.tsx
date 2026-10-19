@@ -211,6 +211,11 @@ export default function Belanja() {
                           </span>
                         )}
                         <span className={`oleh ${milikSaya ? "saya" : ""}`}>dicatat {milikSaya ? "Anda" : infoPengguna(k.dibuatOleh).nama}</span>
+                        {k.paketId && (
+                          <span className="oleh" title="Kwitansi dari modul Pengadaan; diubah atau dibatalkan lewat paketnya">
+                            dari paket <span className="mono">{k.paketId}</span>
+                          </span>
+                        )}
                       </td>
                       <td className="full sel-aksi">
                         <div className="aksi-baris">{ikonAksi(k)}</div>

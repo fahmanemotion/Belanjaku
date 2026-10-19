@@ -12,10 +12,12 @@ import { useStore } from "./StoreProvider";
 
 /** Alur dokumen per peran, ditampilkan di panel kiri */
 const ALUR = [
+  { peran: "PPK", aksi: "Nota Dinas & HPS, lalu Kwitansi" },
+  { peran: "Pejabat Pengadaan", aksi: "Surat Pesanan & Nota Pembelian" },
   { peran: "Operator Pengadaan", aksi: "Catat dokumen belanja" },
   { peran: "Operator Pencairan", aksi: "Centang & cairkan" },
   { peran: "Operator Pengesahan", aksi: "Centang & sahkan" },
-  { peran: "Pejabat Pengadaan, PPK & Manajemen", aksi: "Pantau dokumen" },
+  { peran: "Manajemen", aksi: "Pantau seluruh modul" },
   { peran: "Administrator", aksi: "Kelola pengguna & referensi" },
 ];
 
@@ -62,7 +64,7 @@ export default function Login() {
 
         <div className="login-hero">
           <h1>Belanja tertib, dari pencatatan sampai pengesahan.</h1>
-          <p>Dokumen belanja dicatat terpusat oleh bagian pengadaan, lalu direkap keuangan saat dicairkan dan disahkan. Setiap langkah tercatat di riwayat aktivitas.</p>
+          <p>Pengadaan berjalan dari Nota Dinas PPK sampai Kwitansi, BAP &amp; BAST; dokumen belanja lalu direkap keuangan saat dicairkan dan disahkan. Setiap langkah tercatat di riwayat aktivitas.</p>
         </div>
 
         <ol className="login-alur" aria-label="Alur dokumen per peran">

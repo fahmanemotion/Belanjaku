@@ -6,7 +6,7 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 - **Database & login:** Supabase (PostgreSQL, Auth, Storage, Realtime).
 - **Hosting:** Vercel (region fungsi `sin1` Singapura, dekat dengan database di `ap-southeast-1`).
 
-> Semua data tersimpan di database: dokumen belanja, rekap pencairan & pengesahan, pengguna, referensi,
+> Semua data tersimpan di database: paket pengadaan (Nota Dinas s.d. BAST), dokumen belanja, rekap pencairan & pengesahan, pengguna, referensi,
 > riwayat aktivitas, Kertas Kerja POK, kartu **Pagu Belanja** (dari FA Detail yang diunggah), dan kartu **BLU & RM**
 > (dari rekap pencairan & pengesahan). Yang **masih data contoh** dan diberi label *Data contoh*: grafik
 > Target vs Realisasi dan panel Target per Jenis Belanja (lihat `lib/data.ts`).
@@ -14,13 +14,18 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 ## Alur dokumen
 
 ```
-Belanja                         Pencairan                            Pengesahan
-(Operator Pengadaan)            (Operator Pencairan)                 (Operator Pengesahan)
+Pengadaan (alur Kwitansi)
+PPK: Nota Dinas & HPS ─▶ Pejabat Pengadaan: Surat Pesanan ─▶ Nota Pembelian ─▶ PPK: Kwitansi, BAP & BAST ─┐
+                                                                                                          │ otomatis
+Belanja                         Pencairan                            Pengesahan                           ▼
+(Operator Pengadaan)            (Operator Pencairan)                 (Operator Pengesahan)        dokumen belanja Kwitansi
 catat kegiatan          ──▶     Daftar: centang → Cairkan     ──▶    Daftar: centang → Sahkan
                                 Riwayat Pencairan                    Riwayat Pengesahan
 status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: Disahkan (SAH-2026-…)
 ```
 
+0. **Pengadaan** — alur dokumen Kwitansi dari Nota Dinas sampai BAST (lihat *Pengadaan: alur dokumen Kwitansi* di bawah).
+   Saat PPK menerbitkan Kwitansi, BAP & BAST, kwitansinya **otomatis menjadi dokumen belanja** jenis Kwitansi di Daftar Pencairan.
 1. **Belanja** — bagian pengadaan barang/jasa mencatat semua dokumen belanja kebutuhan unit kerja di satu tempat
    (boleh beberapa operator sekaligus, untuk unit kerja mana pun). Dokumen yang tersimpan **langsung masuk Daftar Pencairan**.
    Dokumen hanya bisa diubah / dihapus oleh **pencatatnya** dan hanya **selama belum dicairkan**.
@@ -47,6 +52,38 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
   pengesahannya dulu.
 - Semua langkah (catat, ubah, hapus, rekap, batal) tercatat di **Riwayat Aktivitas**; nomor dokumen dan nomor rekap bisa dilacak.
 
+### Pengadaan: alur dokumen Kwitansi
+
+Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **paket** (`PKT-2026-0001`) berjalan 4 tahap:
+
+| Tahap | Pelaku | Isian | Dokumen tercetak |
+|---|---|---|---|
+| 1. Nota Dinas & HPS | **PPK** | Pekerjaan, unit kerja, sumber dana, MAK, nomor & tanggal Nota Dinas, daftar barang/jasa (uraian, spesifikasi per baris, jumlah, satuan, harga satuan HPS, keterangan), PPN 11% | Nota Dinas *Perintah Pengadaan Barang/Jasa*, HPS (*Daftar Paket Pekerjaan*) |
+| 2. Surat Pesanan | **Pejabat Pengadaan** | Penyedia (pilih dari Referensi atau tambah baru) + data pembayarannya, nomor & tanggal SP, batas waktu (hari) | Surat Pesanan |
+| 3. Nota Pembelian | **Pejabat Pengadaan** | Tanggal nota, harga satuan pembelian per barang (bawaan = HPS; total tidak boleh melebihi HPS), PPN 11% | Nota / Bukti Pembelian |
+| 4. Kwitansi, BAP & BAST | **PPK** | Nomor & tanggal Kwitansi, BAP, BAST; tanda √ kolom *MEMENUHI* di Lampiran BAP | Kwitansi + Lampiran, BAP + Lampiran, BAST + Lampiran |
+
+- **Nomor dokumen** mengikuti pola berkas Excel; cukup isi bagian tengahnya, bulan (Romawi) dan tahun mengikuti tanggal dokumen:
+  Nota Dinas & Kwitansi `PL.102/PPK/KO-RM/[100142]/X/PIP.MKS-2026`, Surat Pesanan `PL.102/PP/KO-RM/[100143]/X/PIP.MKS-2026`,
+  BAP `PL.102/PPK-RM/BAP/[KODE-PAKET]/X/2026`, BAST `PL.102/PPK-RM/BAST/[KODE-PAKET]/X/PIP.MKS-2026`. Nomor yang polanya lain
+  bisa ditulis lengkap (*Tulis nomor lengkap*).
+- **Terbilang** (*… Rupiah.*), hari & tanggal dalam huruf di BAP/BAST (*Kamis tanggal Delapan Bulan Oktober Tahun Dua Ribu Dua Puluh Enam*),
+  dan PPN 11% dihitung otomatis (PPN dibulatkan ke rupiah terdekat).
+- **Penanda tangan**: PPK paket (yang menerbitkan Nota Dinas) dan Pejabat Pengadaan yang menerbitkan Surat Pesanan. NIP, pangkat/golongan,
+  serta nomor & tanggal **SK penunjukan PPK** (dicetak di BAP) diisi Administrator di modul **Pengguna** atau oleh pejabatnya sendiri lewat
+  tombol **Data penanda tangan** di modul Pengadaan. Isian yang kosong tercetak titik-titik.
+- **Data penyedia** (pimpinan, jabatan, alamat, NPWP, bank, rekening) wajib lengkap saat Surat Pesanan; perubahannya ikut tersimpan di Referensi.
+  Saat kwitansi terbit, data penyedia & pejabat **disalin ke paket** sehingga cetakan ulang tetap sama walau referensi berubah.
+- **Ubah & batal**: satu tahap bisa diubah pelakunya selama tahap berikutnya belum terbit. Tahap terakhir bisa **dibatalkan** (wajib alasan)
+  agar tahap sebelumnya bisa diperbaiki; isiannya tetap tersimpan untuk diterbitkan ulang. Membatalkan kwitansi mengeluarkan dokumen
+  belanjanya dari Daftar Pencairan. Kwitansi yang **sudah dicairkan** tidak bisa diubah atau dibatalkan. Paket hanya bisa **dihapus**
+  selama masih di tahap Nota Dinas.
+- Dokumen belanja hasil paket hanya diubah lewat modul Pengadaan (di modul Belanja tombol ubah/hapusnya terkunci dan diberi label *dari paket PKT-…*).
+- Administrator boleh menjalankan semua tahap (memilih PPK / Pejabat Pengadaan penanda tangan). Peran lain hanya melihat dan mencetak.
+- **Cetak**: tombol cetak pada tiap tahap atau *Cetak semua* di rincian paket; pilih dokumen di bar atas pratinjau. Kertas A4, satu dokumen per
+  halaman. Di jendela cetak browser pilih ukuran **A4**, skala **100% / Default**, margin **Default**, dan matikan **Header dan footer**.
+  Kop surat & logo kaki halaman diambil dari `public/dokumen/`; motto kaki halaman memakai huruf *Brush Script MT* (tersedia di Windows & macOS).
+
 ### Sisa anggaran saat pengesahan
 
 - **Sisa anggaran MAK** = pagu − lock − realisasi pada FA Detail aktif **dikurangi** kegiatan MAK itu yang sudah disahkan
@@ -63,7 +100,7 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 |---|---|
 | Login | Supabase Auth (email + kata sandi). Akun dibuat Administrator; tidak ada pendaftaran publik. |
 | Membaca data | Browser membaca tabel lewat Supabase dengan **Row Level Security (RLS)**: pengguna nonaktif tidak bisa membaca apa pun. |
-| Mengubah data | **Hanya lewat fungsi RPC di database** (`buat_pengajuan`, `buat_rekap_pencairan`, `buat_rekap_pengesahan`, dst.). Setiap fungsi memeriksa peran, pencatat dokumen, status, sumber dana, dan (saat pengesahan) sisa anggaran MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
+| Mengubah data | **Hanya lewat fungsi RPC di database** (`simpan_nota_dinas`, `simpan_kwitansi`, `buat_pengajuan`, `buat_rekap_pencairan`, `buat_rekap_pengesahan`, dst.). Setiap fungsi memeriksa peran, pencatat dokumen, status, sumber dana, dan (saat pengesahan) sisa anggaran MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
 | Kelola akun | Tambah/ubah/hapus pengguna dan atur ulang kata sandi lewat API server Next.js (`app/api/pengguna/…`) memakai *secret key*. Pemanggil diperiksa: harus Administrator aktif. |
 | File FA Detail | File asli `.xlsx` disimpan di Storage bucket privat **`fa-detail`**. |
 | Realtime | Perubahan oleh pengguna lain langsung tampil tanpa refresh. |
@@ -74,7 +111,7 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja<br>(4 dan 5: **jalankan sekali** lewat SQL Editor, boleh sekaligus dalam satu tempelan — lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja — **sudah dijalankan**<br>6. `supabase/migrations/20261020090000_pengadaan_kwitansi.sql` — modul Pengadaan (alur dokumen Kwitansi)<br>(4 dan 6: **jalankan sekali** lewat SQL Editor, boleh sekaligus dalam satu tempelan dengan urutan 4 lalu 6 — lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -98,6 +135,10 @@ barunya di-push:
   PPSPM & Bendahara Pengeluaran (akun yang masih memakainya dialihkan ke Manajemen), menambah **Pejabat Pengadaan** dan
   **Manajemen**, membatasi Operator Pencairan & Operator Pengesahan **satu akun aktif**, dan mengosongkan unit kerja pengguna.
   File ini berhenti sendiri (tanpa mengubah apa pun) bila sudah ada dua akun aktif untuk salah satu peran tersebut.
+- `20261020090000_pengadaan_kwitansi.sql` menambah modul **Pengadaan**: tabel `paket_pengadaan` + view `v_paket`, izin
+  `pengadaan.ppk` (PPK, Administrator) & `pengadaan.pp` (Pejabat Pengadaan, Administrator), kolom data penanda tangan di `pengguna`
+  (NIP, pangkat, SK) dan data pembayaran di `penyedia` (alamat, pimpinan, jabatan, NPWP, bank, rekening), RPC tiap tahap, serta
+  memperbaiki pencatatan aktivitas *cetak lembar belanja*. Aman dijalankan ulang.
 
 ### Langkah pertama (sekali saja, di dashboard Supabase)
 
@@ -153,17 +194,15 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 
 ## Masuk (login) & hak akses
 
-| Peran | Modul yang terbuka | Yang bisa dilakukan |
-|---|---|---|
 | Peran | Jumlah akun | Modul yang terbuka | Yang bisa dilakukan |
 |---|---|---|---|
-| Operator Pengadaan | boleh banyak | Dashboard, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja |
+| PPK | boleh banyak | Semua kecuali Pengguna | **Pengadaan**: terbitkan Nota Dinas & HPS, lalu Kwitansi, BAP & BAST untuk paketnya (ubah, batalkan, hapus sesuai tahap); selebihnya memantau |
+| Pejabat Pengadaan | boleh banyak | Semua kecuali Pengguna | **Pengadaan**: terbitkan Surat Pesanan (memilih / menambah penyedia) dan catat Nota Pembelian; selebihnya memantau |
+| Operator Pengadaan | boleh banyak | Dashboard, Pengadaan, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja & pengadaan |
 | Operator Pencairan | **1 akun aktif** | Semua kecuali Pengguna | **Pencairan**: centang kegiatan → Cairkan; batalkan rekap pencairan |
 | Operator Pengesahan | **1 akun aktif** | Semua kecuali Pengguna | **Pengesahan**: centang kegiatan yang sudah dicairkan → Sahkan; batalkan rekap pengesahan |
-| Pejabat Pengadaan | boleh banyak | Semua kecuali Pengguna | Memantau dokumen belanja, pencairan, pengesahan, dan riwayat aktivitas (hanya melihat) |
-| PPK | boleh banyak | Semua kecuali Pengguna | Memantau (hanya melihat); nama PPK dipilih sebagai penanda tangan saat mencetak lembar dokumen belanja |
-| Manajemen | boleh banyak | Semua kecuali Pengguna | Memantau (hanya melihat) |
-| Administrator | boleh banyak (minimal 1) | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, pencairan **dan** pengesahan, **upload FA Detail** |
+| Manajemen | boleh banyak | Semua kecuali Pengguna | Memantau & mencetak (hanya melihat) |
+| Administrator | boleh banyak (minimal 1) | Semua modul | Kelola pengguna & referensi, semua tahap pengadaan, catat dokumen belanja, pencairan **dan** pengesahan, **upload FA Detail** |
 
 - Pengguna hanya dibedakan menurut **peran**; akun pengguna **tidak terikat unit kerja** (unit kerja tetap diisi pada dokumen belanja).
 - Akun aktif kedua untuk Operator Pencairan / Operator Pengesahan ditolak (form Pengguna menandai peran yang sudah dipakai;
@@ -180,16 +219,17 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 
 | Route         | Isi |
 |---------------|-----|
+| `/pengadaan`  | Alur dokumen Kwitansi: kartu 4 tahap, daftar paket (filter tahap, dana, *Perlu tindakan saya*), rincian paket per tahap, form tiap tahap, cetak 10 dokumen sesuai format Excel |
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
 | `/belanja`    | Catat dokumen belanja (bagian pengadaan; nilai berformat *5.000.000* + terbilang, tidak dibatasi sisa anggaran); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
-| `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen (BLJ-…) atau rekap (CAIR-… / SAH-…); ekspor CSV |
+| `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak paket (PKT-…), dokumen (BLJ-…), atau rekap (CAIR-… / SAH-…); ekspor CSV |
 | `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah dicairkan (status pengesahan, batal rekap) |
 | `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan** (cek *Sisa anggaran per MAK*, terkunci bila kurang); **Riwayat Pengesahan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
-| `/referensi`  | Akun belanja, unit kerja, penyedia, sumber dana (tambah & ubah oleh Administrator) |
-| `/pengguna`   | Kelola pengguna, peran, status, atur ulang kata sandi (khusus Administrator) |
+| `/referensi`  | Akun belanja, unit kerja, penyedia (termasuk pimpinan, alamat, NPWP, bank, rekening), sumber dana (tambah & ubah oleh Administrator) |
+| `/pengguna`   | Kelola pengguna, peran, status, data penanda tangan PPK & Pejabat Pengadaan (NIP, pangkat, SK), atur ulang kata sandi (khusus Administrator) |
 
-Nomor dibuat database: dokumen belanja `BLJ-2026-0001`, rekap pencairan `CAIR-2026-0001`, rekap pengesahan `SAH-2026-0001`
-(tahun rekap mengikuti tanggal pencairan/pengesahan). Nomor tidak dipakai ulang walau dokumennya dihapus atau rekapnya dibatalkan.
+Nomor dibuat database: paket pengadaan `PKT-2026-0001` (tahun mengikuti tanggal Nota Dinas), dokumen belanja `BLJ-2026-0001`,
+rekap pencairan `CAIR-2026-0001`, rekap pengesahan `SAH-2026-0001` (tahun rekap mengikuti tanggal pencairan/pengesahan). Nomor tidak dipakai ulang walau dokumennya dihapus atau rekapnya dibatalkan.
 
 ### Kertas Kerja POK & upload FA Detail
 
@@ -222,16 +262,18 @@ kode satker 287494). Setelah **Terapkan data**:
 | Objek | Isi |
 |---|---|
 | `izin_peran` | Matriks izin per peran (sama dengan `lib/akses.ts`) |
-| `unit_kerja`, `sumber_dana`, `akun`, `penyedia` | Referensi |
-| `pengguna` | Profil pengguna, tertaut ke akun Supabase Auth (`auth_id`) |
+| `unit_kerja`, `sumber_dana`, `akun`, `penyedia` | Referensi (penyedia termasuk data pembayaran untuk dokumen pengadaan) |
+| `pengguna` | Profil pengguna, tertaut ke akun Supabase Auth (`auth_id`); NIP, pangkat, SK untuk penanda tangan |
+| `paket_pengadaan`, view `v_paket` | Paket pengadaan alur Kwitansi: tahap 1–4, daftar barang (JSON), nomor & tanggal tiap dokumen, PPK, Pejabat Pengadaan, penyedia, salinan data cetak (`arsip`), dokumen belanja hasil kwitansi (`pengajuan_id`) |
 | `pengajuan` | Dokumen belanja (kolom `pencairan_nomor`, `pengesahan_nomor` menunjuk rekapnya) |
 | `rekap_pencairan`, `rekap_pengesahan` | Rekap berceklist: tanggal, sumber dana, jenis pembayaran (pencairan), No. referensi, jumlah & total |
-| view `v_pengajuan` | Dokumen belanja + status (*Belum dicairkan / Dicairkan / Disahkan*) yang dihitung dari rekapnya |
+| view `v_pengajuan` | Dokumen belanja + status (*Belum dicairkan / Dicairkan / Disahkan*) yang dihitung dari rekapnya + nomor paket asal (`paket_id`) |
 | `aktivitas` | Riwayat aktivitas (hanya bertambah) |
 | `pok_unggahan`, `pok_uraian`, `pok_mak`, `pok_item` | Kertas Kerja POK dari FA Detail |
 | Skema `app` | Fungsi bantu & penghitung nomor dokumen (tidak terbuka lewat API) |
 
-Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_pengajuan`, `buat_rekap_pencairan`,
+Fungsi RPC yang dipanggil aplikasi: `simpan_nota_dinas`, `simpan_pesanan`, `simpan_pembelian`, `simpan_kwitansi`,
+`batal_tahap_paket`, `hapus_paket`, `simpan_data_pejabat`, `buat_pengajuan`, `ubah_pengajuan`, `hapus_pengajuan`, `buat_rekap_pencairan`,
 `batal_rekap_pencairan`, `buat_rekap_pengesahan`, `batal_rekap_pengesahan`, `cek_anggaran_pengesahan`, `catat_aktivitas`,
 `jejak_dokumen`, `simpan_referensi`, `terapkan_pok`, `pok_aktif`. Fungsi `admin_*` hanya bisa dipanggil API server (service role).
 
@@ -242,10 +284,9 @@ Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_p
 ### Memasang di project Supabase baru (mis. untuk uji coba)
 
 1. Buat project baru di Supabase.
-2. Buka **SQL Editor**, jalankan berurutan isi file: `supabase/migrations/20261018210500_belanjaku_skema.sql`,
-   `supabase/migrations/20261019090000_alur_rekap_pencairan.sql`, `supabase/migrations/20261019103000_peran_operator_pengesahan.sql`,
-   `supabase/seed/01_referensi.sql`,
-   lalu `supabase/seed/02_pok_oktober_2026.sql`.
+2. Buka **SQL Editor**, jalankan berurutan isi seluruh file di `supabase/migrations/` (urut nama file:
+   `20261018210500…`, `20261019090000…`, `20261019103000…`, `20261019150000…`, `20261019160000…`, `20261020090000…`),
+   lalu `supabase/seed/01_referensi.sql` dan `supabase/seed/02_pok_oktober_2026.sql`.
 3. Ikuti *Langkah pertama* di atas, lalu isi variabel lingkungan dengan URL & kunci project baru.
 
 `supabase/rollback/20261018210500_belanjaku_skema_down.sql` menghapus seluruh skema **beserta semua datanya** — hanya untuk uji coba.
@@ -258,7 +299,7 @@ belanjaku-pip/
 │   ├── layout.tsx          # root layout: font, tema, StoreProvider, AppShell
 │   ├── globals.css         # seluruh styling (token warna terang & gelap)
 │   ├── page.tsx            # redirect ke /dashboard
-│   ├── <modul>/page.tsx    # dashboard, belanja, aktivitas, pencairan, pengesahan, referensi, pengguna
+│   ├── <modul>/page.tsx    # dashboard, pengadaan, belanja, aktivitas, pencairan, pengesahan, referensi, pengguna
 │   └── api/pengguna/       # API server kelola akun (route.ts, [id]/route.ts, [id]/sandi/route.ts)
 ├── components/
 │   ├── AppShell.tsx        # rail ikon + navigasi + menu akun; Login bila belum masuk
@@ -266,6 +307,8 @@ belanjaku-pip/
 │   ├── GantiSandi.tsx      # ganti kata sandi sendiri
 │   ├── StoreProvider.tsx   # sesi, data dari Supabase, realtime, aksi (RPC), hak akses, toast
 │   ├── RekapBelanja.tsx    # daftar berceklist + riwayat rekap (dipakai Pencairan & Pengesahan)
+│   ├── CetakPengadaan.tsx  # 10 dokumen pengadaan A4 (format berkas Excel NODIN_KWITANSI)
+│   ├── InputNomor.tsx      # isian nomor dokumen berpola (PL.102/…)
 │   ├── Combobox.tsx, CetakKegiatan.tsx, UnggahFaDetail.tsx, KolomKegiatan.tsx, Icon.tsx, Logo.tsx, ui.tsx
 │   └── modules/            # satu file per modul
 ├── lib/
@@ -275,9 +318,11 @@ belanjaku-pip/
 │   ├── akses.ts            # HAK AKSES per peran (modul & izin)
 │   ├── mak.ts              # tipe & penyusun data MAK / Kertas Kerja POK
 │   ├── faDetail.ts         # pembaca file FA Detail (.xlsx) SAKTI di browser + validasi
+│   ├── pengadaan.ts        # tahap, jumlah & PPN, terbilang, tanggal dalam huruf, pola nomor dokumen pengadaan
 │   ├── data.ts             # konstanta & DATA CONTOH dashboard
 │   ├── types.ts            # tipe data
 │   └── format.ts           # format rupiah & tanggal Indonesia
+├── public/dokumen/         # kop surat & logo kaki halaman dokumen pengadaan (KAN, SGS)
 ├── supabase/
 │   ├── migrations/         # skema database (tabel, RLS, RPC, storage, realtime)
 │   ├── seed/               # data awal referensi & Kertas Kerja POK
@@ -299,3 +344,8 @@ belanjaku-pip/
 | Kotak centang / tombol **Cairkan** tidak muncul | Peran Anda hanya melihat. Pencairan: Operator Pencairan, Administrator. |
 | Kotak centang / tombol **Sahkan** tidak muncul | Pengesahan: Operator Pengesahan, Administrator. |
 | *"Peran … hanya boleh satu akun aktif"* | Operator Pencairan / Operator Pengesahan sudah dipegang akun lain. Nonaktifkan atau ubah peran akun itu dulu. |
+| Tombol **Terbitkan / Catat** di Pengadaan tidak muncul | Tahap paket bukan giliran peran Anda, atau paket milik PPK / Pejabat Pengadaan lain. Nota Dinas & Kwitansi: PPK paket itu; Surat Pesanan & Nota Pembelian: Pejabat Pengadaan (Administrator boleh semua). |
+| *"Nota dinas … tidak bisa diubah karena Surat Pesanan sudah terbit"* | Minta Pejabat Pengadaan **membatalkan** Surat Pesanan (isiannya tetap tersimpan), perbaiki Nota Dinas, lalu SP diterbitkan ulang. |
+| Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default**, matikan **Header dan footer**. |
+| NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
+| Kop surat / logo tidak tampil | Pastikan folder `public/dokumen/` (kop-pip.png, kan.png, sgs-9001.png, sgs-21001.png) ikut ter-push ke GitHub. |
