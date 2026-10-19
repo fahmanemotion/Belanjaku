@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ClipboardReact, type FormEvent, type KeyboardEvent as KeyboardReact, type ReactNode } from "react";
 import Icon from "./Icon";
 import { desimal } from "@/lib/format";
 
@@ -101,6 +101,7 @@ export function Modal({
   onClose,
   children,
   bahaya = false,
+  nonaktif = false,
 }: {
   title: string;
   description: string;
@@ -111,6 +112,8 @@ export function Modal({
   children: ReactNode;
   /** tombol konfirmasi berwarna merah untuk tindakan yang tidak bisa dibatalkan */
   bahaya?: boolean;
+  /** kunci tombol simpan (alasannya ditampilkan di isi form) */
+  nonaktif?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [sedang, setSedang] = useState(false);
@@ -130,7 +133,7 @@ export function Modal({
 
   const handle = async (e: FormEvent) => {
     e.preventDefault();
-    if (sedang) return;
+    if (sedang || nonaktif) return;
     setSedang(true);
     try {
       await onSubmit();
@@ -154,7 +157,7 @@ export function Modal({
           <button type="button" className="btn soft" onClick={onClose} disabled={sedang}>
             Batal
           </button>
-          <button type="submit" className={`btn ${bahaya ? "danger-solid" : "dark"}`} disabled={sedang}>
+          <button type="submit" className={`btn ${bahaya ? "danger-solid" : "dark"}`} disabled={sedang || nonaktif}>
             {sedang ? "Menyimpan…" : submitLabel}
           </button>
         </div>
@@ -169,6 +172,96 @@ export function Field({ label, full, children }: { label: string; full?: boolean
       {label}
       {children}
     </label>
+  );
+}
+
+/* ---------- Isian rupiah: tampil 5.000.000 saat diketik; yang disimpan hanya digit ---------- */
+const MAKS_DIGIT_RUPIAH = 15;
+const titikRibuan = (digit: string) => digit.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+/** Teks → digit nilai rupiah (tanpa nol di depan, maksimal 15 digit) */
+const digitRupiah = (teks: string) => teks.replace(/\D/g, "").replace(/^0+/, "").slice(0, MAKS_DIGIT_RUPIAH);
+/**
+ * Teks dari clipboard ("Rp 5.000.000,00", "5,000,000.00") → digit saja. Desimal 1–2 angka di akhir dibuang
+ * karena nilai belanja selalu bilangan bulat.
+ */
+const digitTempel = (teks: string) => teks.replace(/[^\d.,]/g, "").replace(/[.,]\d{1,2}$/, "").replace(/\D/g, "");
+
+/** Posisi kursor di teks berformat tepat setelah digit ke-`kiri` */
+function posisiSetelahDigit(teks: string, kiri: number): number {
+  if (kiri <= 0) return 0;
+  let n = 0;
+  for (let i = 0; i < teks.length; i++) if (teks[i] >= "0" && teks[i] <= "9" && ++n === kiri) return i + 1;
+  return teks.length;
+}
+
+export function InputRupiah({ value, onChange, placeholder = "0" }: { value: string; onChange: (digit: string) => void; placeholder?: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const kursor = useRef<number | null>(null);
+  const tampil = titikRibuan(value);
+
+  // Setelah titik ribuan disusun ulang, kursor dikembalikan ke posisi digit yang sama
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && kursor.current !== null && document.activeElement === el) el.setSelectionRange(kursor.current, kursor.current);
+    kursor.current = null;
+  }, [tampil]);
+
+  const terapkan = (teks: string, posisi: number) => {
+    const digit = digitRupiah(teks);
+    const semua = teks.replace(/\D/g, "");
+    const nolDepan = semua.length - semua.replace(/^0+/, "").length;
+    const kiri = Math.min(Math.max(0, teks.slice(0, posisi).replace(/\D/g, "").length - nolDepan), digit.length);
+    const p = posisiSetelahDigit(titikRibuan(digit), kiri);
+    if (digit === value) {
+      // nilai tidak berubah (mis. mengetik huruf/titik): tampilan dikembalikan, kursor tetap di tempatnya
+      kursor.current = null;
+      requestAnimationFrame(() => {
+        const el = ref.current;
+        if (el && document.activeElement === el) el.setSelectionRange(p, p);
+      });
+    } else {
+      kursor.current = p;
+    }
+    onChange(digit);
+  };
+
+  // Backspace/Delete tepat di samping titik ribuan menghapus digit di sebelahnya, bukan titiknya saja
+  const onKeyDown = (e: KeyboardReact<HTMLInputElement>) => {
+    const el = e.currentTarget;
+    const s = el.selectionStart ?? 0;
+    if (s !== el.selectionEnd) return;
+    if (e.key === "Backspace" && s >= 2 && el.value[s - 1] === ".") {
+      e.preventDefault();
+      terapkan(el.value.slice(0, s - 2) + el.value.slice(s - 1), s - 2);
+    } else if (e.key === "Delete" && el.value[s] === "." && s + 1 < el.value.length) {
+      e.preventDefault();
+      terapkan(el.value.slice(0, s + 1) + el.value.slice(s + 2), s);
+    }
+  };
+
+  const onPaste = (e: ClipboardReact<HTMLInputElement>) => {
+    e.preventDefault();
+    const el = e.currentTarget;
+    const s = el.selectionStart ?? el.value.length;
+    const akhir = el.selectionEnd ?? s;
+    const tempel = digitTempel(e.clipboardData.getData("text"));
+    terapkan(el.value.slice(0, s) + tempel + el.value.slice(akhir), s + tempel.length);
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      className="isian-rupiah num"
+      value={tampil}
+      placeholder={placeholder}
+      onChange={(e) => terapkan(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    />
   );
 }
 

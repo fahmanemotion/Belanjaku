@@ -1093,6 +1093,27 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .ringkas-grup > .ringkas-kepala { padding-bottom: 5px; border-bottom: 1px dashed var(--line); font-weight: 700; }
 .ringkas-grup > .ringkas-kepala span { color: var(--ink); }
 .ringkas-grup + .ringkas-grup { margin-top: 6px; }
+/* Isian nilai rupiah (5.000.000) + terbilang */
+.form .isian-rupiah { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.form .isian-catatan { font-size: 11.5px; font-weight: 500; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; }
+.modal .catatan-sisa { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--ink); font-size: 12.5px; line-height: 1.45; }
+.modal .catatan-sisa svg { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--warn); }
+/* Form Sahkan: cek sisa anggaran per MAK */
+.cek-anggaran { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.cek-anggaran-kepala { display: flex; flex-direction: column; gap: 2px; }
+.cek-anggaran-kepala b { font-size: 13px; color: var(--ink); }
+.cek-anggaran-kepala span { font-size: 11.5px; color: var(--muted); }
+.modal .cek-anggaran-info { margin: 0; font-size: 12.5px; }
+.daftar-anggaran { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+.daftar-anggaran li { display: grid; gap: 4px; padding: 9px 11px; border-radius: 12px; background: var(--sub); }
+.daftar-anggaran li.kurang { background: var(--bad-bg); }
+.da-kepala { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 10px; }
+.da-kepala .mono { font-size: 12px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.da-angka { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 14px; font-size: 12.5px; color: var(--muted); }
+.da-angka b { color: var(--ink); font-weight: 700; }
+.daftar-anggaran small { font-size: 11.5px; color: var(--muted); }
+.modal .cek-anggaran-galat { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--bad); line-height: 1.45; }
+.modal .cek-anggaran-galat svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 @media (min-width: 768px) {
   /* nama unit kerja panjang: dropdown filter dibatasi agar kolom cari tetap lega */
   .filter-kegiatan .sel.saring { max-width: 220px; }
@@ -1108,6 +1129,9 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .tw.stack .tabel-rekap td.aksi-rekap .btn { width: 100%; }
   .kembali-rekap .btn { width: 100%; }
   .info-rekap-detail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 12px 14px; }
+  /* kolom Pencairan di kartu HP: nomor, jenis, dan tanggal boleh turun baris agar tidak melebar */
+  .info-rekap-sub { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
+  .info-rekap-sub .mono { white-space: nowrap; }
 }
 
 /* ---------- Cetak: hanya lembar dokumen belanja yang ikut tercetak ---------- */

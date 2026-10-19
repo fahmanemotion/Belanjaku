@@ -27,7 +27,7 @@ import {
 } from "@/lib/db";
 import { susunBarisPok, susunDaftarMak, type BarisPok, type DataPok, type InfoMak } from "@/lib/mak";
 import { supabase, supabaseTerkonfigurasi } from "@/lib/supabase";
-import type { Aktivitas, JenisPencairan, JenisRekap, Kegiatan, Pengguna, Peran, Referensi, Rekap } from "@/lib/types";
+import type { Aktivitas, AnggaranMak, JenisPencairan, JenisRekap, Kegiatan, Pengguna, Peran, Referensi, Rekap } from "@/lib/types";
 
 export type KegiatanBaru = Omit<Kegiatan, "id" | "status" | "pencairan" | "pengesahan" | "dibuatOleh">;
 export type JenisReferensi = keyof Referensi;
@@ -88,6 +88,8 @@ interface StoreValue {
   /* Pencairan & Pengesahan (rekap berceklist) */
   buatRekap: (jenis: JenisRekap, ids: string[], isian: IsianRekap) => Promise<Rekap | null>;
   batalRekap: (jenis: JenisRekap, nomor: string, alasan: string) => Promise<boolean>;
+  /** sisa anggaran per MAK untuk kegiatan yang akan disahkan (pemeriksaan yang sama dengan saat Sahkan) */
+  cekAnggaran: (ids: string[]) => Promise<{ ok: true; data: AnggaranMak[] } | { ok: false; pesan: string }>;
 
   /* Pengguna (lewat API server) */
   tambahPengguna: (p: { nama: string; email: string; peran: Peran; unit: string; sandi: string }) => Promise<boolean>;
@@ -467,6 +469,13 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     return baru;
   };
 
+  // Tanpa toast: galatnya ditampilkan di form Sahkan
+  const cekAnggaran = useCallback<StoreValue["cekAnggaran"]>(async (ids) => {
+    const { data, error } = await supabase().rpc("cek_anggaran_pengesahan", { p_ids: ids });
+    if (error) return { ok: false, pesan: pesanGalat(error) };
+    return { ok: true, data: (data ?? []) as AnggaranMak[] };
+  }, []);
+
   const batalRekap: StoreValue["batalRekap"] = async (jenis, nomor, alasan) => {
     const cair = jenis === "pencairan";
     if (!wajib(cair ? "pencairan.rekap" : "pengesahan.sahkan", "membatalkan rekap")) return false;
@@ -626,6 +635,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     izinUbah,
     buatRekap,
     batalRekap,
+    cekAnggaran,
     tambahPengguna,
     ubahPengguna,
     toggleAktifPengguna,

@@ -6,9 +6,9 @@ import Combobox, { type OpsiCombo } from "@/components/Combobox";
 import Icon, { type IconName } from "@/components/Icon";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
 import { useStore } from "@/components/StoreProvider";
-import { EmptyRow, Field, Modal, PageHead, Paginasi, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
+import { EmptyRow, Field, InputRupiah, Modal, PageHead, Paginasi, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
 import { JENIS_DOKUMEN, STATUS_BELANJA, akunSesuaiDana, infoJenisDokumen } from "@/lib/data";
-import { hariIni, rupiah, rupiahSingkat, tanggal } from "@/lib/format";
+import { hariIni, rupiah, rupiahSingkat, tanggal, terbilang } from "@/lib/format";
 import { akunDariMak } from "@/lib/mak";
 import type { JenisDokumen, Kegiatan, StatusBelanja, SumberDana } from "@/lib/types";
 
@@ -354,6 +354,10 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
     [dana, daftarMak],
   );
   const n = Number(nilai);
+  // Sisa anggaran MAK hanya sebagai informasi; batasnya baru berlaku saat pengesahan
+  const infoMak = mak ? cariMak(mak) : undefined;
+  const lewatSisa = infoMak !== undefined && n > 0 && n > infoMak.sisa;
+  const kalimatNilai = n > 0 ? terbilang(n) : "";
 
   const gantiDana = (d: string) => {
     setDana(d as SumberDana);
@@ -378,11 +382,6 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
     }
     if (!akunSesuaiDana(akunDariMak(mak), dana)) {
       toast(`MAK ${mak} tidak sesuai untuk sumber dana ${dana}`);
-      return;
-    }
-    const pagu = cariMak(mak);
-    if (pagu && n > pagu.sisa) {
-      toast(`Nilai melebihi sisa pagu MAK (sisa ${rupiah(pagu.sisa)})`);
       return;
     }
     const data = {
@@ -420,7 +419,7 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
       description={
         awal
           ? "Dokumen masih bisa diubah selama belum dicairkan. Setiap perubahan tercatat di Riwayat Aktivitas beserta nilai sebelum dan sesudahnya."
-          : "Isi rincian dokumen belanja kebutuhan unit kerja. Setelah disimpan, dokumen langsung masuk Daftar Pencairan; hanya Anda yang dapat mengubah atau menghapusnya selama belum dicairkan."
+          : "Isi rincian dokumen belanja kebutuhan unit kerja. Setelah disimpan, dokumen langsung masuk Daftar Pencairan; hanya Anda yang dapat mengubah atau menghapusnya selama belum dicairkan. Sisa anggaran MAK diperiksa saat pengesahan."
       }
       submitLabel={awal ? "Simpan Perubahan" : "Simpan Dokumen"}
       onSubmit={simpan}
@@ -455,11 +454,21 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
         />
       </Field>
       <Field label="Nilai (Rp)">
-        <input type="number" min={1} inputMode="numeric" value={nilai} onChange={(e) => setNilai(e.target.value)} placeholder="0" />
+        <InputRupiah value={nilai} onChange={setNilai} />
+        {kalimatNilai && <small className="isian-catatan">{kalimatNilai.charAt(0).toUpperCase() + kalimatNilai.slice(1)}</small>}
       </Field>
       <Field label="Tanggal dokumen">
         <input type="date" value={tgl} onChange={(e) => setTgl(e.target.value)} />
       </Field>
+      {infoMak && lewatSisa && (
+        <p className="full catatan-sisa" role="status">
+          <Icon name="info" />
+          <span>
+            Nilai melebihi sisa anggaran MAK di FA Detail (<b className="num">{rupiah(infoMak.sisa)}</b>). Dokumen tetap bisa disimpan dan dicairkan;
+            sisa anggaran baru diperiksa saat pengesahan.
+          </span>
+        </p>
+      )}
       {awal && (
         <Field label="Catatan perubahan (opsional)" full>
           <textarea rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="mis. Penyesuaian harga sesuai penawaran akhir" />

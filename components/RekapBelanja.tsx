@@ -15,12 +15,16 @@
  * Riwayat menampilkan tabel rekapan (Uraian "Pencairan 01", tanggal, sumber dana, nominal); tombol aksi
  * "Lihat daftar" mengganti tabel itu dengan daftar kegiatan yang sudah dicairkan / disahkan pada rekap tersebut.
  *
+ * Sisa anggaran MAK di FA Detail tidak membatasi saat belanja dicatat; batasnya berlaku saat "Sahkan":
+ * total kegiatan per MAK ≤ sisa FA Detail aktif − kegiatan yang sudah disahkan sejak FA Detail itu diunggah
+ * (form Sahkan menampilkan rinciannya lewat RPC cek_anggaran_pengesahan, database memeriksa ulang).
+ *
  * Setiap "Cairkan"/"Sahkan" membentuk rekap bernomor (CAIR-… / SAH-…). Satu rekap berisi satu
  * sumber dana; bila yang dicentang campuran RM dan BLU, rekap otomatis dibuat per sumber dana.
  * Rekap yang keliru dapat dibatalkan (wajib alasan) sehingga kegiatannya kembali ke daftar.
  * Database (RPC buat_rekap_* / batal_rekap_*) memeriksa ulang semua aturan ini.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Icon, { type IconName } from "@/components/Icon";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
 import { useStore } from "@/components/StoreProvider";
@@ -28,7 +32,7 @@ import { Badge, BadgeDana, EmptyRow, Field, Modal, PageHead, Paginasi, Saring, S
 import type { Izin } from "@/lib/akses";
 import { JENIS_DOKUMEN, JENIS_PENCAIRAN, jumlah } from "@/lib/data";
 import { desimal, hariIni, rupiah, rupiahSingkat, tanggal, tanggalJam } from "@/lib/format";
-import type { JenisDokumen, JenisPencairan, JenisRekap, Kegiatan, Rekap } from "@/lib/types";
+import type { AnggaranMak, JenisDokumen, JenisPencairan, JenisRekap, Kegiatan, Rekap } from "@/lib/types";
 
 type Dana = "RM" | "BLU";
 type TabDana = "Semua" | Dana;
@@ -496,6 +500,12 @@ interface IsianDana {
   referensi: string;
 }
 
+/** Hasil cek sisa anggaran di form Sahkan ("-" = form Cairkan, tidak diperiksa) */
+type StatusAnggaran = { status: "-" } | { status: "memuat" } | { status: "siap"; data: AnggaranMak[] } | { status: "gagal"; pesan: string };
+/** Sisa anggaran MAK = sisa di FA Detail aktif − kegiatan yang sudah disahkan sejak FA Detail itu diunggah */
+const sisaMak = (a: AnggaranMak) => (a.sisaFa ?? 0) - a.terpakai;
+const cukup = (a: AnggaranMak) => a.ada && a.usul <= sisaMak(a);
+
 function FormRekap({
   jenis,
   isi,
@@ -509,8 +519,23 @@ function FormRekap({
 }) {
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
-  const { buatRekap, toast } = useStore();
+  const { buatRekap, cekAnggaran, dataPok, toast } = useStore();
   const grup = DANA.map((d) => ({ dana: d, isi: isi.filter((k) => k.dana === d) })).filter((g) => g.isi.length > 0);
+
+  // Sahkan: sisa anggaran MAK (FA Detail aktif) diperiksa dulu; tombol terkunci bila ada MAK yang kurang
+  const [anggaran, setAnggaran] = useState<StatusAnggaran>(cair ? { status: "-" } : { status: "memuat" });
+  useEffect(() => {
+    if (cair) return;
+    let batal = false;
+    void cekAnggaran(isi.map((k) => k.id)).then((h) => {
+      if (!batal) setAnggaran(h.ok ? { status: "siap", data: h.data } : { status: "gagal", pesan: h.pesan });
+    });
+    return () => {
+      batal = true;
+    };
+  }, [cair, isi, cekAnggaran]);
+  const kurang = anggaran.status === "siap" ? anggaran.data.filter((a) => !cukup(a)) : [];
+  const terkunci = !cair && (anggaran.status === "memuat" || kurang.length > 0);
   const banyak = grup.length > 1;
   // Pengesahan tidak boleh bertanggal sebelum tanggal pencairan terakhir kegiatan terpilih
   const minTanggal = cair ? "" : isi.reduce((m, k) => (k.pencairan && k.pencairan.tanggal > m ? k.pencairan.tanggal : m), "");
@@ -537,6 +562,10 @@ function FormRekap({
     }
     if (minTanggal && tgl < minTanggal) {
       toast(`Tanggal pengesahan tidak boleh sebelum tanggal pencairan (${tanggal(minTanggal)})`);
+      return;
+    }
+    if (kurang.length > 0) {
+      toast(`Sisa anggaran tidak mencukupi untuk ${jml(kurang.length)} MAK`);
       return;
     }
     const hasil: Rekap[] = [];
@@ -581,6 +610,7 @@ function FormRekap({
       submitLabel={K.tombol}
       onSubmit={simpan}
       onClose={onClose}
+      nonaktif={terkunci}
     >
       <Field label={K.labelTanggal} full={banyak}>
         <input type="date" value={tgl} min={minTanggal || undefined} onChange={(e) => setTgl(e.target.value)} />
@@ -636,7 +666,74 @@ function FormRekap({
           <b className="num">{rupiah(totalNilai(isi))}</b>
         </div>
       </div>
+      <CekAnggaran anggaran={anggaran} periode={dataPok?.sumber.periode} />
     </Modal>
+  );
+}
+
+/* ---------- Cek sisa anggaran per MAK (form Sahkan) ---------- */
+function CekAnggaran({ anggaran, periode }: { anggaran: StatusAnggaran; periode?: string }) {
+  if (anggaran.status === "-") return null;
+  // MAK yang kurang ditampilkan paling atas
+  const data = anggaran.status === "siap" ? [...anggaran.data].sort((a, b) => Number(cukup(a)) - Number(cukup(b)) || a.mak.localeCompare(b.mak)) : [];
+  const kurang = data.filter((a) => !cukup(a));
+  return (
+    <div className="full cek-anggaran" aria-live="polite">
+      <div className="cek-anggaran-kepala">
+        <b>Sisa anggaran per MAK</b>
+        <span>FA Detail{periode ? ` ${periode}` : ""} dikurangi kegiatan yang sudah disahkan sejak FA Detail itu diunggah</span>
+      </div>
+      {anggaran.status === "memuat" && <p className="cek-anggaran-info">Memeriksa sisa anggaran…</p>}
+      {anggaran.status === "gagal" && (
+        <p className="cek-anggaran-info">Sisa anggaran belum bisa ditampilkan ({anggaran.pesan}). Database tetap memeriksanya saat disahkan.</p>
+      )}
+      {data.length > 0 && (
+        <ul className="daftar-anggaran">
+          {data.map((a) => {
+            const ok = cukup(a);
+            const sisa = sisaMak(a);
+            return (
+              <li key={a.mak} className={ok ? undefined : "kurang"}>
+                <div className="da-kepala">
+                  <span className="mono">{a.mak}</span>
+                  {!a.ada ? (
+                    <Status tone="b">Tidak ada di FA Detail</Status>
+                  ) : ok ? (
+                    <Status tone="g">Cukup</Status>
+                  ) : (
+                    <Status tone="b">Kurang {rupiah(a.usul - sisa)}</Status>
+                  )}
+                </div>
+                <div className="da-angka">
+                  <span>
+                    Akan disahkan <b className="num">{rupiah(a.usul)}</b> · {jml(a.jumlah)} kegiatan
+                  </span>
+                  {a.ada && (
+                    <span>
+                      Sisa anggaran <b className="num">{rupiah(sisa)}</b>
+                    </span>
+                  )}
+                </div>
+                {a.ada && a.terpakai > 0 && (
+                  <small>
+                    Sisa FA Detail {rupiah(a.sisaFa ?? 0)} − {rupiah(a.terpakai)} sudah disahkan sejak FA Detail diunggah
+                  </small>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {kurang.length > 0 && (
+        <p className="cek-anggaran-galat">
+          <Icon name="lock" />
+          <span>
+            Sisa anggaran tidak mencukupi untuk {jml(kurang.length)} MAK, sehingga belum bisa disahkan. Hapus centang kegiatan pada MAK tersebut atau unggah
+            FA Detail terbaru.
+          </span>
+        </p>
+      )}
+    </div>
   );
 }
 

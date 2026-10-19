@@ -24,6 +24,8 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 1. **Belanja** — bagian pengadaan barang/jasa mencatat semua dokumen belanja kebutuhan unit kerja di satu tempat
    (boleh beberapa operator sekaligus, untuk unit kerja mana pun). Dokumen yang tersimpan **langsung masuk Daftar Pencairan**.
    Dokumen hanya bisa diubah / dihapus oleh **pencatatnya** dan hanya **selama belum dicairkan**.
+   Kolom **Nilai** langsung berformat ribuan saat diketik (*5.000.000*) dan menampilkan terbilangnya. Nilai dokumen
+   **tidak dibatasi sisa anggaran** MAK di FA Detail (bila melebihi, form hanya memberi catatan).
 2. **Pencairan** — Operator Keuangan membuka **Daftar** Pencairan, **mencentang** kegiatan yang dibayarkan ke
    penyedia/pihak ketiga (kotak centang per baris, centang satu halaman, atau *Pilih semua*; jumlah & total tampil di
    bar ceklist bawah), lalu klik **Cairkan** (isi tanggal, jenis pembayaran LS/GU/TUP, No. SP2D/SPM bila ada).
@@ -31,7 +33,8 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
    dan otomatis masuk Daftar Pengesahan.
 3. **Pengesahan** — Operator Pengesahan membuka **Daftar** Pengesahan (berisi kegiatan yang sudah dicairkan), mencentang
    kegiatan yang disahkan, lalu klik **Sahkan**. Kegiatan pindah ke **Riwayat Pengesahan**. Tanggal pengesahan tidak boleh
-   sebelum tanggal pencairan.
+   sebelum tanggal pencairan. **Di sinilah sisa anggaran berlaku**: form Sahkan menampilkan *Sisa anggaran per MAK* dan
+   tombol Sahkan terkunci bila total kegiatan terpilih pada suatu MAK melebihi sisanya (lihat *Sisa anggaran saat pengesahan*).
 
 - Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
 - Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**. Daftar punya tab
@@ -44,13 +47,23 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
   pengesahannya dulu.
 - Semua langkah (catat, ubah, hapus, rekap, batal) tercatat di **Riwayat Aktivitas**; nomor dokumen dan nomor rekap bisa dilacak.
 
+### Sisa anggaran saat pengesahan
+
+- **Sisa anggaran MAK** = pagu − lock − realisasi pada FA Detail aktif **dikurangi** kegiatan MAK itu yang sudah disahkan
+  sejak FA Detail tersebut diunggah (pengesahan sesudah unggahan belum tercatat sebagai realisasi di file itu).
+  Setelah FA Detail baru diunggah, perhitungan mulai lagi dari realisasi file baru — pengesahan lama tidak dihitung dua kali.
+- Saat **Sahkan**, total kegiatan terpilih per MAK tidak boleh melebihi sisa tersebut; MAK yang tidak ada di FA Detail aktif
+  juga ditolak. Database memeriksa ulang (`buat_rekap_pengesahan`) dan pengesahan berjalan bergiliran, sehingga dua operator
+  tidak bisa memakai sisa yang sama bersamaan.
+- Mencatat, mengubah, dan mencairkan belanja **tidak** dibatasi sisa anggaran.
+
 ## Cara kerja singkat
 
 | Bagian | Cara kerja |
 |---|---|
 | Login | Supabase Auth (email + kata sandi). Akun dibuat Administrator; tidak ada pendaftaran publik. |
 | Membaca data | Browser membaca tabel lewat Supabase dengan **Row Level Security (RLS)**: pengguna nonaktif tidak bisa membaca apa pun. |
-| Mengubah data | **Hanya lewat fungsi RPC di database** (`buat_pengajuan`, `buat_rekap_pencairan`, `buat_rekap_pengesahan`, dst.). Setiap fungsi memeriksa peran, pencatat dokumen, status, sumber dana, dan sisa pagu MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
+| Mengubah data | **Hanya lewat fungsi RPC di database** (`buat_pengajuan`, `buat_rekap_pencairan`, `buat_rekap_pengesahan`, dst.). Setiap fungsi memeriksa peran, pencatat dokumen, status, sumber dana, dan (saat pengesahan) sisa anggaran MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
 | Kelola akun | Tambah/ubah/hapus pengguna dan atur ulang kata sandi lewat API server Next.js (`app/api/pengguna/…`) memakai *secret key*. Pemanggil diperiksa: harus Administrator aktif. |
 | File FA Detail | File asli `.xlsx` disimpan di Storage bucket privat **`fa-detail`**. |
 | Realtime | Perubahan oleh pengguna lain langsung tampil tanpa refresh. |
@@ -61,7 +74,7 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -79,6 +92,8 @@ barunya di-push:
   (`spp`, `sp3b`, `pengesahan`) dengan `rekap_pencairan` & `rekap_pengesahan`, dan berhenti sendiri bila tabel alur lama sudah berisi data.
 - `20261019103000_peran_operator_pengesahan.sql` menambah peran **Operator Pengesahan**, menjadikan Operator Keuangan khusus
   pencairan, dan memberi Administrator izin mencairkan & mengesahkan.
+- `20261019150000_sisa_anggaran_saat_pengesahan.sql` melepas batas sisa anggaran saat mencatat/mengubah belanja, memasang
+  pemeriksaan sisa anggaran per MAK di `buat_rekap_pengesahan`, dan menambah RPC baca `cek_anggaran_pengesahan`.
 
 ### Langkah pertama (sekali saja, di dashboard Supabase)
 
@@ -155,10 +170,10 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 | Route         | Isi |
 |---------------|-----|
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
-| `/belanja`    | Catat dokumen belanja (bagian pengadaan); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
+| `/belanja`    | Catat dokumen belanja (bagian pengadaan; nilai berformat *5.000.000* + terbilang, tidak dibatasi sisa anggaran); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
 | `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen (BLJ-…) atau rekap (CAIR-… / SAH-…); ekspor CSV |
 | `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah dicairkan (status pengesahan, batal rekap) |
-| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan**; **Riwayat Pengesahan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
+| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan** (cek *Sisa anggaran per MAK*, terkunci bila kurang); **Riwayat Pengesahan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
 | `/referensi`  | Akun belanja, unit kerja, penyedia, sumber dana (tambah & ubah oleh Administrator) |
 | `/pengguna`   | Kelola pengguna, peran, status, atur ulang kata sandi (khusus Administrator) |
 
@@ -181,8 +196,8 @@ kode satker 287494). Setelah **Terapkan data**:
 
 - file asli disimpan di Storage `fa-detail`, isinya disimpan di tabel `pok_*`, dan menjadi **POK aktif** untuk tahunnya
   (unggahan lama tetap tersimpan sebagai riwayat);
-- kartu **Pagu Belanja**, tabel Kertas Kerja POK, daftar MAK di form catat belanja, dan batas sisa pagu MAK langsung memakai data baru
-  untuk semua pengguna; unggahan tercatat di riwayat aktivitas.
+- kartu **Pagu Belanja**, tabel Kertas Kerja POK, daftar MAK di form catat belanja, dan sisa anggaran saat pengesahan langsung
+  memakai data baru untuk semua pengguna; unggahan tercatat di riwayat aktivitas.
 
 ### Cara angka di kartu dihitung
 
@@ -206,8 +221,8 @@ kode satker 287494). Setelah **Terapkan data**:
 | Skema `app` | Fungsi bantu & penghitung nomor dokumen (tidak terbuka lewat API) |
 
 Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_pengajuan`, `buat_rekap_pencairan`,
-`batal_rekap_pencairan`, `buat_rekap_pengesahan`, `batal_rekap_pengesahan`, `catat_aktivitas`, `jejak_dokumen`,
-`simpan_referensi`, `terapkan_pok`, `pok_aktif`. Fungsi `admin_*` hanya bisa dipanggil API server (service role).
+`batal_rekap_pencairan`, `buat_rekap_pengesahan`, `batal_rekap_pengesahan`, `cek_anggaran_pengesahan`, `catat_aktivitas`,
+`jejak_dokumen`, `simpan_referensi`, `terapkan_pok`, `pok_aktif`. Fungsi `admin_*` hanya bisa dipanggil API server (service role).
 
 > **Security Advisor** Supabase menampilkan peringatan *"Signed-In Users Can Execute SECURITY DEFINER Function"* untuk fungsi RPC di atas.
 > Ini disengaja: fungsi-fungsi itulah satu-satunya jalan mengubah data, dan setiap fungsi memeriksa peran & status di dalamnya.

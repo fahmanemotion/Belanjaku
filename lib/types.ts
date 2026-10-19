@@ -67,6 +67,25 @@ export interface Rekap {
   dibuatPada: string;
 }
 
+/**
+ * Sisa anggaran satu MAK untuk kegiatan yang akan disahkan (RPC cek_anggaran_pengesahan).
+ * Sisa = sisaFa − terpakai; pengesahan ditolak bila usul melebihi sisa.
+ */
+export interface AnggaranMak {
+  mak: string;
+  /** MAK ada di FA Detail (Kertas Kerja POK) yang aktif */
+  ada: boolean;
+  /** pagu − lock − realisasi pada FA Detail aktif (kosong bila MAK tidak ada) */
+  sisaFa?: number;
+  /** kegiatan MAK ini yang sudah disahkan sejak FA Detail itu diunggah */
+  terpakai: number;
+  /** total nilai kegiatan terpilih pada MAK ini */
+  usul: number;
+  jumlah: number;
+  /** waktu lokal FA Detail aktif diunggah */
+  berlakuSejak?: string;
+}
+
 /* ---------- Riwayat aktivitas (jejak audit) ---------- */
 
 export type JenisAktivitas =
