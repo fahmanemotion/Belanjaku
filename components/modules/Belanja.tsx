@@ -5,100 +5,83 @@ import CetakKegiatan from "@/components/CetakKegiatan";
 import Combobox, { type OpsiCombo } from "@/components/Combobox";
 import Icon, { type IconName } from "@/components/Icon";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
-import { STATUS_PERLU_ULANG, useStore } from "@/components/StoreProvider";
-import { EmptyRow, Field, Modal, PageHead, SearchBox, Status, Tabs, type Tone } from "@/components/ui";
+import { useStore } from "@/components/StoreProvider";
+import { EmptyRow, Field, Modal, PageHead, Paginasi, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
 import { JENIS_DOKUMEN, STATUS_BELANJA, akunSesuaiDana, infoJenisDokumen } from "@/lib/data";
-import { hariIni, rupiah, rupiahSingkat } from "@/lib/format";
+import { hariIni, rupiah, rupiahSingkat, tanggal } from "@/lib/format";
 import { akunDariMak } from "@/lib/mak";
 import type { JenisDokumen, Kegiatan, StatusBelanja, SumberDana } from "@/lib/types";
 
 export const TONE_BELANJA: Record<StatusBelanja, Tone> = {
-  Draf: "m",
-  Diajukan: "w",
-  Diverifikasi: "i",
-  Disetujui: "g",
-  Ditolak: "b",
+  "Belum dicairkan": "w",
+  Dicairkan: "i",
+  Disahkan: "g",
 };
 
 type Filter = "Semua" | StatusBelanja;
+type FilterDana = "Semua" | "RM" | "BLU";
+type FilterPencatat = "Semua" | "Saya";
 
+/**
+ * Modul Belanja — dipakai bagian pengadaan barang/jasa untuk mencatat seluruh dokumen belanja
+ * kebutuhan unit kerja secara terpusat (boleh oleh beberapa operator sekaligus).
+ * Dokumen yang tersimpan langsung masuk Daftar Pencairan; status berikutnya mengikuti rekap
+ * pencairan dan pengesahan oleh bagian keuangan.
+ */
 export default function Belanja() {
-  const { kegiatan, ubahStatus, izinUbah, infoPengguna, penggunaAktif, boleh, namaUnit, toast } = useStore();
+  const { kegiatan, izinUbah, infoPengguna, penggunaAktif, boleh, namaUnit, toast } = useStore();
   const [filter, setFilter] = useState<Filter>("Semua");
+  const [dana, setDana] = useState<FilterDana>("Semua");
+  const [pencatat, setPencatat] = useState<FilterPencatat>("Semua");
   const [cari, setCari] = useState("");
   const [formBaru, setFormBaru] = useState(false);
   const [diedit, setDiedit] = useState<Kegiatan | null>(null);
   const [dihapus, setDihapus] = useState<Kegiatan | null>(null);
   const [dicetak, setDicetak] = useState<Kegiatan | null>(null);
-  /** id dokumen yang sedang diproses (tombol alur terkunci sampai selesai) */
-  const [proses, setProses] = useState<string | null>(null);
 
   const bisaBuat = boleh("belanja.buat");
-  const bisaVerifikasi = boleh("belanja.verifikasi");
-  const bisaSetujui = boleh("belanja.setujui");
   const semuaUnit = boleh("belanja.lihatSemua");
 
-  // Tanpa izin "lihat semua" (Operator Unit) hanya pengajuan unitnya sendiri yang tampil
+  // Tanpa izin "lihat semua" hanya dokumen unitnya sendiri yang tampil
   const terlihat = useMemo(
     () => (semuaUnit ? kegiatan : kegiatan.filter((k) => k.unit === penggunaAktif.unit)),
     [kegiatan, semuaUnit, penggunaAktif.unit],
   );
-  const total = (s: StatusBelanja[]) => terlihat.filter((k) => s.includes(k.status)).reduce((a, k) => a + k.nilai, 0);
-  const jumlah = (s: StatusBelanja) => terlihat.filter((k) => k.status === s).length;
+  const dengan = (s: StatusBelanja) => terlihat.filter((k) => k.status === s);
+  const nilai = (xs: Kegiatan[]) => xs.reduce((a, k) => a + k.nilai, 0);
 
   const baris = useMemo(() => {
-    const q = cari.toLowerCase();
+    const q = cari.trim().toLowerCase();
     return terlihat.filter(
       (k) =>
         (filter === "Semua" || k.status === filter) &&
-        [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak].join(" ").toLowerCase().includes(q),
+        (dana === "Semua" || k.dana === dana) &&
+        (pencatat === "Semua" || k.dibuatOleh === penggunaAktif.id) &&
+        (!q ||
+          [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak, namaUnit(k.unit), k.pencairan?.nomor ?? "", k.pengesahan?.nomor ?? ""]
+            .join(" ")
+            .toLowerCase()
+            .includes(q)),
     );
-  }, [terlihat, filter, cari]);
+  }, [terlihat, filter, dana, pencatat, cari, penggunaAktif.id, namaUnit]);
 
-  const ubah = async (k: Kegiatan, status: StatusBelanja, pesan: string) => {
-    setProses(k.id);
-    if (await ubahStatus(k.id, status)) toast(pesan);
-    setProses(null);
+  // 30 dokumen per halaman; setiap filter berubah kembali ke halaman 1
+  const hal = useHalaman(baris);
+  const saring =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      hal.awal();
+    };
+  const adaFilter = dana !== "Semua" || pencatat !== "Semua" || cari !== "";
+  const reset = () => {
+    setDana("Semua");
+    setPencatat("Semua");
+    setCari("");
+    hal.awal();
   };
 
-  /** Tombol alur sesuai status dokumen dan peran yang sedang masuk */
-  const alur = (k: Kegiatan) => {
-    const milik = k.dibuatOleh === penggunaAktif.id;
-    const sibuk = proses === k.id;
-    if (k.status === "Draf")
-      return milik && bisaBuat ? (
-        <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Diajukan", "Pengajuan diajukan, menunggu verifikasi pagu")}>
-          {sibuk ? "Memproses…" : "Ajukan"}
-        </button>
-      ) : (
-        <span className="note">Belum diajukan</span>
-      );
-    if (k.status === "Diajukan")
-      return bisaVerifikasi ? (
-        <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Diverifikasi", "Pagu terverifikasi, menunggu persetujuan PPK")}>
-          {sibuk ? "Memproses…" : "Verifikasi"}
-        </button>
-      ) : (
-        <span className="note">Menunggu verifikasi</span>
-      );
-    if (k.status === "Diverifikasi")
-      return bisaSetujui ? (
-        <div className="tbar" style={{ gap: 6, flexWrap: "nowrap" }}>
-          <button type="button" className="btn dark sm" disabled={sibuk} onClick={() => ubah(k, "Disetujui", "Pengajuan disetujui PPK")}>
-            Setujui
-          </button>
-          <button type="button" className="btn soft sm" disabled={sibuk} onClick={() => ubah(k, "Ditolak", "Pengajuan dikembalikan ke unit")}>
-            Tolak
-          </button>
-        </div>
-      ) : (
-        <span className="note">Menunggu persetujuan PPK</span>
-      );
-    if (k.status === "Disetujui" && !k.spp) return <span className="note">Siap dibuat SPP</span>;
-    return null;
-  };
-
-  /** Ikon edit · hapus · cetak. Edit & hapus hanya untuk peran pembuat pengajuan, terkunci bila bukan dokumennya. */
+  /** Ikon edit · hapus · cetak. Edit & hapus hanya untuk pencatat dokumen selama belum dicairkan. */
   const ikonAksi = (k: Kegiatan) => {
     const izin = izinUbah(k);
     const kunci = izin.boleh ? undefined : izin.alasan;
@@ -117,23 +100,22 @@ export default function Belanja() {
 
   // Keterangan hak akses di atas tabel
   const keterangan = [
-    !semuaUnit && `Menampilkan pengajuan ${namaUnit(penggunaAktif.unit)}.`,
-    bisaVerifikasi && "Anda memverifikasi pagu pengajuan yang diajukan.",
-    bisaSetujui && "Anda menyetujui atau menolak pengajuan yang sudah diverifikasi.",
-    bisaBuat && "Edit & hapus hanya untuk dokumen buatan Anda.",
-    !bisaBuat && !bisaVerifikasi && !bisaSetujui && "Anda dapat melihat dan mencetak pengajuan.",
+    !semuaUnit && `Menampilkan dokumen ${namaUnit(penggunaAktif.unit)}.`,
+    bisaBuat
+      ? "Catat dokumen belanja untuk unit kerja mana pun; edit & hapus hanya untuk dokumen catatan Anda yang belum dicairkan."
+      : "Anda dapat melihat dan mencetak dokumen belanja yang dicatat bagian pengadaan.",
   ].filter(Boolean);
 
   return (
     <>
       <PageHead
         title="Belanja"
-        subtitle="Pengajuan belanja unit kerja: diajukan operator, diverifikasi pagunya, lalu disetujui PPK sebelum dicairkan."
+        subtitle="Pencatatan dokumen belanja kebutuhan unit kerja oleh bagian pengadaan barang/jasa. Dokumen yang tersimpan langsung masuk daftar pencairan."
         actions={
           bisaBuat ? (
             <button type="button" className="btn acc" onClick={() => setFormBaru(true)}>
               <Icon name="plus" />
-              Pengajuan Baru
+              Catat Belanja
             </button>
           ) : undefined
         }
@@ -141,36 +123,60 @@ export default function Belanja() {
 
       <div className="stats">
         <div className="stat hot">
-          <div className="lbl">Total diajukan</div>
-          <div className="big num">{rupiahSingkat(total(["Diajukan", "Diverifikasi", "Disetujui", "Ditolak"]))}</div>
-          <div className="note">{terlihat.length} kegiatan</div>
+          <div className="lbl">Total tercatat</div>
+          <div className="big num">{rupiahSingkat(nilai(terlihat))}</div>
+          <div className="note">{terlihat.length} dokumen belanja</div>
         </div>
-        <div className="stat">
-          <div className="lbl">Menunggu verifikasi</div>
-          <div className="big num">{jumlah("Diajukan")}</div>
-          <div className="note">{rupiahSingkat(total(["Diajukan"]))}</div>
-        </div>
-        <div className="stat">
-          <div className="lbl">Disetujui PPK</div>
-          <div className="big num">{jumlah("Disetujui")}</div>
-          <div className="note">{rupiahSingkat(total(["Disetujui"]))}</div>
-        </div>
-        <div className="stat">
-          <div className="lbl">Ditolak / dikembalikan</div>
-          <div className="big num">{jumlah("Ditolak")}</div>
-          <div className="note">{rupiahSingkat(total(["Ditolak"]))}</div>
-        </div>
+        {STATUS_BELANJA.map((s) => (
+          <div className="stat" key={s}>
+            <div className="lbl">{s}</div>
+            <div className="big num">{dengan(s).length}</div>
+            <div className="note">{rupiahSingkat(nilai(dengan(s)))}</div>
+          </div>
+        ))}
       </div>
 
-      <section className="panel">
+      <section className="panel ada-paginasi" ref={hal.ref}>
         <div className="ph">
           <Tabs<Filter>
             label="Filter status"
             value={filter}
-            onChange={setFilter}
-            items={[{ value: "Semua", label: "Semua" }, ...STATUS_BELANJA.map((s) => ({ value: s, label: s }))]}
+            onChange={saring(setFilter)}
+            items={[
+              { value: "Semua", label: `Semua · ${terlihat.length}` },
+              ...STATUS_BELANJA.map((s) => ({ value: s, label: `${s} · ${dengan(s).length}` })),
+            ]}
           />
-          <SearchBox id="belanja-cari" value={cari} onChange={setCari} placeholder="Cari kegiatan, dokumen, penyedia" />
+          <div className="tbar filter-kegiatan">
+            <Saring<FilterDana>
+              label="Sumber dana"
+              value={dana}
+              onChange={saring(setDana)}
+              opsi={[
+                { value: "Semua", label: "Semua dana" },
+                { value: "RM", label: "RM" },
+                { value: "BLU", label: "BLU" },
+              ]}
+            />
+            {bisaBuat && (
+              <Saring<FilterPencatat>
+                label="Pencatat"
+                value={pencatat}
+                onChange={saring(setPencatat)}
+                opsi={[
+                  { value: "Semua", label: "Semua pencatat" },
+                  { value: "Saya", label: "Catatan saya" },
+                ]}
+              />
+            )}
+            <SearchBox id="belanja-cari" value={cari} onChange={saring(setCari)} placeholder="Cari kegiatan, dokumen, penyedia" />
+            {adaFilter && (
+              <button type="button" className="btn soft sm" onClick={reset}>
+                <Icon name="close" />
+                Reset
+              </button>
+            )}
+          </div>
         </div>
         <p className="info-akses">
           <Icon name="shield" />
@@ -189,22 +195,31 @@ export default function Belanja() {
             </thead>
             <tbody>
               {baris.length === 0 ? (
-                <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 2}>Belum ada pengajuan dengan status ini.</EmptyRow>
+                <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 2}>
+                  {terlihat.length === 0
+                    ? bisaBuat
+                      ? "Belum ada dokumen belanja. Klik Catat Belanja untuk mencatat dokumen pertama."
+                      : "Belum ada dokumen belanja yang dicatat."
+                    : "Tidak ada dokumen yang cocok dengan filter."}
+                </EmptyRow>
               ) : (
-                baris.map((k) => {
+                hal.tampil.map((k) => {
                   const milikSaya = k.dibuatOleh === penggunaAktif.id;
+                  const rekap = k.pengesahan ?? k.pencairan;
                   return (
                     <tr key={k.id}>
                       <SelKegiatan k={k} />
                       <td data-label="Status">
                         <Status tone={TONE_BELANJA[k.status]}>{k.status}</Status>
-                        <span className={`oleh ${milikSaya ? "saya" : ""}`}>oleh {milikSaya ? "Anda" : infoPengguna(k.dibuatOleh).nama}</span>
+                        {rekap && (
+                          <span className="status-rekap mono" title={`${k.pengesahan ? "Rekap pengesahan" : "Rekap pencairan"} · ${tanggal(rekap.tanggal)}`}>
+                            {rekap.nomor}
+                          </span>
+                        )}
+                        <span className={`oleh ${milikSaya ? "saya" : ""}`}>dicatat {milikSaya ? "Anda" : infoPengguna(k.dibuatOleh).nama}</span>
                       </td>
                       <td className="full sel-aksi">
-                        <div className="aksi-baris">
-                          {alur(k)}
-                          {ikonAksi(k)}
-                        </div>
+                        <div className="aksi-baris">{ikonAksi(k)}</div>
                       </td>
                     </tr>
                   );
@@ -213,10 +228,20 @@ export default function Belanja() {
             </tbody>
           </table>
         </div>
+        <Paginasi halaman={hal.halaman} jumlahHalaman={hal.jumlahHalaman} total={baris.length} ukuran={hal.ukuran} satuan="dokumen" onPindah={hal.pindah} />
       </section>
 
-      {formBaru && <FormPengajuan onClose={() => setFormBaru(false)} onSaved={() => { setFilter("Semua"); setFormBaru(false); }} />}
-      {diedit && <FormPengajuan awal={diedit} onClose={() => setDiedit(null)} onSaved={() => setDiedit(null)} />}
+      {formBaru && (
+        <FormBelanja
+          onClose={() => setFormBaru(false)}
+          onSaved={() => {
+            setFilter("Semua");
+            hal.awal();
+            setFormBaru(false);
+          }}
+        />
+      )}
+      {diedit && <FormBelanja awal={diedit} onClose={() => setDiedit(null)} onSaved={() => setDiedit(null)} />}
       {dihapus && <KonfirmasiHapus k={dihapus} onClose={() => setDihapus(null)} />}
       {dicetak && <CetakKegiatan k={dicetak} onClose={() => setDicetak(null)} />}
     </>
@@ -265,7 +290,7 @@ function KonfirmasiHapus({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
   return (
     <Modal
       title={`Hapus ${k.id}?`}
-      description="Dokumen akan hilang dari daftar belanja. Isi dokumen dan alasan penghapusan tetap tersimpan di Riwayat Aktivitas."
+      description="Dokumen akan hilang dari daftar belanja dan daftar pencairan. Isi dokumen dan alasan penghapusan tetap tersimpan di Riwayat Aktivitas."
       submitLabel="Hapus dokumen"
       bahaya
       onSubmit={async () => {
@@ -294,10 +319,10 @@ function KonfirmasiHapus({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
   );
 }
 
-/* ---------- Form pengajuan baru / ubah pengajuan ---------- */
-function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () => void; onSaved: () => void }) {
+/* ---------- Form catat dokumen belanja / ubah dokumen ---------- */
+function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () => void; onSaved: () => void }) {
   const { referensi, tambahKegiatan, editKegiatan, boleh, penggunaAktif, daftarMak, cariMak, toast } = useStore();
-  // Operator Unit hanya boleh mengajukan untuk unitnya sendiri
+  // Peran tanpa izin "lihat semua" hanya boleh mencatat untuk unitnya sendiri
   const unitSendiri = !boleh("belanja.lihatSemua");
   const [uraian, setUraian] = useState(awal?.uraian ?? "");
   const [jenisDokumen, setJenisDokumen] = useState<JenisDokumen | "">(awal?.jenisDokumen ?? "Kwitansi");
@@ -309,7 +334,6 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
   const [nilai, setNilai] = useState(awal ? String(awal.nilai) : "");
   const [tgl, setTgl] = useState(awal?.tanggal ?? hariIni());
   const [catatan, setCatatan] = useState("");
-  const ulang = awal ? STATUS_PERLU_ULANG.includes(awal.status) : false;
 
   /* ---------- pilihan combobox: cukup nama / kode, tanpa keterangan tambahan ---------- */
   const opsiDokumen: OpsiCombo[] = JENIS_DOKUMEN.map((j) => ({ value: j.value, label: j.value }));
@@ -381,26 +405,24 @@ function FormPengajuan({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: (
         toast("Belum ada perubahan untuk disimpan");
         return;
       }
-      toast(`${awal.id}: ${hasil.berubah} kolom diubah${hasil.kembaliKeDraf ? " · status kembali ke Draf" : ""}`);
+      toast(`${awal.id}: ${hasil.berubah} kolom diubah`);
     } else {
       const baru = await tambahKegiatan(data);
       if (!baru) return;
-      toast(`${baru.id} tersimpan sebagai draf`);
+      toast(`${baru.id} tersimpan dan masuk Daftar Pencairan`);
     }
     onSaved();
   };
 
   return (
     <Modal
-      title={awal ? `Ubah ${awal.id}` : "Pengajuan Belanja Baru"}
+      title={awal ? `Ubah ${awal.id}` : "Catat Dokumen Belanja"}
       description={
         awal
-          ? ulang
-            ? `Status saat ini ${awal.status}. Setelah disimpan, status kembali ke Draf dan perlu diajukan ulang. Setiap perubahan tercatat di Riwayat Aktivitas.`
-            : "Setiap perubahan tercatat di Riwayat Aktivitas beserta nilai sebelum dan sesudahnya."
-          : "Isi rincian kegiatan. Pengajuan tersimpan sebagai draf sampai Anda mengajukannya ke PPK."
+          ? "Dokumen masih bisa diubah selama belum dicairkan. Setiap perubahan tercatat di Riwayat Aktivitas beserta nilai sebelum dan sesudahnya."
+          : "Isi rincian dokumen belanja kebutuhan unit kerja. Setelah disimpan, dokumen langsung masuk Daftar Pencairan; hanya Anda yang dapat mengubah atau menghapusnya selama belum dicairkan."
       }
-      submitLabel={awal ? "Simpan Perubahan" : "Simpan Draf"}
+      submitLabel={awal ? "Simpan Perubahan" : "Simpan Dokumen"}
       onSubmit={simpan}
       onClose={onClose}
     >

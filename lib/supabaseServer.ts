@@ -74,7 +74,7 @@ export async function bacaJson(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
-export const PERAN_VALID: Peran[] = ["Administrator", "PPK", "PPSPM", "Bendahara Pengeluaran", "Operator Unit"];
+export const PERAN_VALID: Peran[] = ["Administrator", "Operator Pengadaan", "Operator Keuangan", "Bendahara Pengeluaran", "PPK", "PPSPM"];
 export const EMAIL_VALID = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function teks(v: unknown, nama: string, min = 1, maks = 200): string {

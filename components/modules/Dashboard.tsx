@@ -9,15 +9,11 @@ import { BadgeDana, EmptyRow, PageHead, Paginasi, Saring, SearchBox, useHalaman 
 import {
   BULAN_12,
   BULAN_BERJALAN,
-  CONTOH_PENGESAHAN_BLU,
   FILTER_DANA,
   JENIS_BELANJA,
   KARTU_TARGET,
   KODE_DIPA,
   NAMA_BULAN,
-  PAGU_JENIS,
-  REALISASI_BULANAN,
-  RINGKASAN_DANA,
   TAHUN_BERJALAN,
   TAHUN_BULANAN,
   jumlah,
@@ -31,7 +27,7 @@ import {
   JENIS_DOKUMEN,
   type KartuTarget,
 } from "@/lib/data";
-import type { JenisDokumen } from "@/lib/types";
+import type { JenisDokumen, StatusBelanja } from "@/lib/types";
 import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
 import { desimal, rupiah, rupiahSingkat, tanggalJam } from "@/lib/format";
 import type { BarisPok, DataPok, InfoMak } from "@/lib/mak";
@@ -96,34 +92,34 @@ function Tile({
   );
 }
 
-function KartuDana({
-  dana,
-  pengesahan,
-  catatanPengesahan,
-  catatanPencairan,
-}: {
-  dana: Dana;
-  pengesahan: number;
-  catatanPengesahan: string;
-  catatanPencairan: string;
-}) {
-  const info = RINGKASAN_DANA[dana];
-  const pagu = jumlah(JENIS_BELANJA.map((j) => PAGU_JENIS[dana][j.kode].pagu));
-  const total = jumlah(REALISASI_BULANAN[dana]);
-  const pencairan = Math.max(0, total - pengesahan);
-  const berjalan = info.kegiatan - info.kegiatanSelesai;
+/**
+ * Kartu belanja per sumber dana dari data aplikasi:
+ * pagu dari Kertas Kerja POK (FA Detail), nilai pencairan & pengesahan dari rekap di modul Pencairan dan Pengesahan.
+ * Total Belanja = belanja yang sudah dicairkan (termasuk yang sudah disahkan).
+ */
+function KartuDana({ dana }: { dana: Dana }) {
+  const { kegiatan, daftarMak, referensi, boleh, penggunaAktif } = useStore();
+  const semuaUnit = boleh("belanja.lihatSemua");
+  const namaDana = referensi.dana.find((d) => d.kode === dana)?.nama ?? (dana === "RM" ? "Rupiah Murni" : "PNBP BLU");
+  const pagu = jumlah(daftarMak.filter((m) => m.dana === dana).map((m) => m.pagu));
+  const dok = kegiatan.filter((k) => k.dana === dana && (semuaUnit || k.unit === penggunaAktif.unit));
+  const nilai = (s: StatusBelanja) => jumlah(dok.filter((k) => k.status === s).map((k) => k.nilai));
+  const hitung = (s: StatusBelanja) => dok.filter((k) => k.status === s).length;
+  const pencairan = nilai("Dicairkan");
+  const pengesahan = nilai("Disahkan");
+  const total = pencairan + pengesahan;
+  const persen = (a: number, b: number) => `${desimal(b ? (a / b) * 100 : 0)}%`;
 
   return (
     <section className="dcard" aria-label={`Ringkasan belanja ${dana}`}>
       <div className="dhead">
         <div>
           <h3>Belanja {dana}</h3>
-          <p className="sub">{info.nama} · pagu {rupiahSingkat(pagu)}</p>
+          <p className="sub">
+            {namaDana} · {pagu ? `pagu ${rupiahSingkat(pagu)}` : "pagu belum diunggah"}
+          </p>
         </div>
-        <span className="kepala-kanan">
-          <span className="chip-ex kecil" title="Kartu ini masih memakai data contoh">Data contoh</span>
-          <BadgeDana dana={dana} />
-        </span>
+        <BadgeDana dana={dana} />
       </div>
       <div className="tiles">
         <Tile
@@ -131,21 +127,21 @@ function KartuDana({
           label="Total Belanja"
           icon="trend"
           value={rupiahSingkat(total)}
-          delta={`${desimal((total / pagu) * 100)}%`}
-          note="dari pagu"
+          delta={pagu ? persen(total, pagu) : undefined}
+          note={pagu ? "dari pagu" : "sudah dicairkan"}
         />
-        <Tile label="Nilai Pengesahan" icon="stamp" value={rupiahSingkat(pengesahan)} delta={`${desimal((pengesahan / total) * 100)}%`} deltaTone="plain" note={catatanPengesahan} />
-        <Tile label="Nilai Pencairan" icon="wallet" value={rupiahSingkat(pencairan)} delta={`${desimal((pencairan / total) * 100)}%`} deltaTone="plain" note={catatanPencairan} />
+        <Tile label="Nilai Pengesahan" icon="stamp" value={rupiahSingkat(pengesahan)} delta={persen(pengesahan, total)} deltaTone="plain" note="sudah disahkan" />
+        <Tile label="Nilai Pencairan" icon="wallet" value={rupiahSingkat(pencairan)} delta={persen(pencairan, total)} deltaTone="plain" note="belum disahkan" />
         <Tile
           label="Total Kegiatan"
           icon="grid"
           value={
             <>
-              {info.kegiatan} <small>kegiatan</small>
+              {jml(dok.length)} <small>kegiatan</small>
             </>
           }
-          delta={`${info.kegiatanSelesai} selesai`}
-          note={`${berjalan} berjalan`}
+          delta={`${jml(hitung("Disahkan"))} disahkan`}
+          note={`${jml(hitung("Belum dicairkan"))} belum dicairkan`}
         />
       </div>
     </section>
@@ -341,7 +337,7 @@ const NAMA_JENIS_BELANJA: Record<JenisBelanja, string> = {
 
 function TabelKegiatan({ judul }: { judul: ReactNode }) {
   const { kegiatan: semuaKegiatan, boleh, penggunaAktif, namaUnit } = useStore();
-  // Operator Unit hanya melihat kegiatan unitnya sendiri
+  // Peran tanpa izin "lihat semua" hanya melihat kegiatan unitnya sendiri
   const semuaUnit = boleh("belanja.lihatSemua");
   const kegiatan = useMemo(
     () => (semuaUnit ? semuaKegiatan : semuaKegiatan.filter((k) => k.unit === penggunaAktif.unit)),
@@ -560,14 +556,14 @@ function PokKosong({ judul, bisaUnggah }: { judul: ReactNode; bisaUnggah: boolea
       <div className="pok-kosong">
         <Icon name="file" />
         <b>Kertas Kerja POK belum tersedia</b>
-        <p>Unggah Laporan FA Detail 16 Segmen dari SAKTI (.xlsx) untuk mengisi tabel ini, kartu Pagu Belanja, dan daftar MAK di form pengajuan.</p>
+        <p>Unggah Laporan FA Detail 16 Segmen dari SAKTI (.xlsx) untuk mengisi tabel ini, kartu Pagu Belanja, dan daftar MAK di form catat belanja.</p>
         {bisaUnggah ? (
           <button type="button" className="btn dark sm" onClick={() => setUnggah(true)}>
             <Icon name="upload" />
             Upload FA Detail
           </button>
         ) : (
-          <span className="note">Upload dilakukan oleh Administrator atau Operator Unit.</span>
+          <span className="note">Upload dilakukan oleh Administrator atau Operator Pengadaan.</span>
         )}
       </div>
       {unggah && <UnggahFaDetail onClose={() => setUnggah(false)} />}
@@ -935,18 +931,8 @@ export default function Dashboard() {
         </section>
 
         {/* ---------- Kartu BLU & RM ---------- */}
-        <KartuDana
-          dana="BLU"
-          pengesahan={CONTOH_PENGESAHAN_BLU}
-          catatanPengesahan={`SP3B s.d. ${NAMA_BULAN[BULAN_BERJALAN - 2].slice(0, 3)}`}
-          catatanPencairan="belum disahkan"
-        />
-        <KartuDana
-          dana="RM"
-          pengesahan={RINGKASAN_DANA.RM.pengesahanRM ?? 0}
-          catatanPengesahan="SPM GU Nihil"
-          catatanPencairan="SP2D LS/UP/GU"
-        />
+        <KartuDana dana="BLU" />
+        <KartuDana dana="RM" />
 
         {/* ---------- Grafik target vs realisasi ---------- */}
         <PanelGrafik filter={filter} />

@@ -4,15 +4,14 @@
  * State bersama seluruh modul, tersambung ke database Supabase.
  *
  * - Login: Supabase Auth (email + kata sandi). Profil, peran, dan unit dibaca dari tabel `pengguna`.
- * - Membaca data: tabel/view Supabase yang dilindungi Row Level Security
- *   (Operator Unit otomatis hanya menerima data unitnya).
+ * - Membaca data: tabel/view Supabase yang dilindungi Row Level Security.
  * - Mengubah data: fungsi RPC di database (supabase/migrations) yang memeriksa peran, status dokumen,
  *   dan menulis Riwayat Aktivitas dalam satu transaksi. Pemeriksaan izin di sini hanya untuk tampilan.
+ * - Alur: Belanja (dicatat pengadaan) → rekap pencairan → rekap pengesahan.
  * - Kelola pengguna: API server app/api/pengguna (butuh kunci rahasia, hanya Administrator).
  * - Realtime: perubahan oleh pengguna lain langsung dimuat ulang; saat tab kembali aktif data disegarkan.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { NAMA_BULAN, periodeBerjalan } from "@/lib/data";
 import { bolehModul, type Izin, type Modul } from "@/lib/akses";
 import {
   muatAktivitas,
@@ -21,17 +20,26 @@ import {
   muatPengguna,
   muatPok,
   muatReferensi,
-  muatSp3b,
+  muatRekap,
   pesanGalat,
   rapikanKegiatan,
-  type BarisSp3b,
+  rapikanRekap,
 } from "@/lib/db";
 import { susunBarisPok, susunDaftarMak, type BarisPok, type DataPok, type InfoMak } from "@/lib/mak";
 import { supabase, supabaseTerkonfigurasi } from "@/lib/supabase";
-import type { Aktivitas, JenisSpp, Kegiatan, Pengguna, Peran, Referensi, Sp3bBlu, StatusBelanja } from "@/lib/types";
+import type { Aktivitas, JenisPencairan, JenisRekap, Kegiatan, Pengguna, Peran, Referensi, Rekap } from "@/lib/types";
 
-export type KegiatanBaru = Omit<Kegiatan, "id" | "status" | "spp" | "disahkan" | "dibuatOleh">;
+export type KegiatanBaru = Omit<Kegiatan, "id" | "status" | "pencairan" | "pengesahan" | "dibuatOleh">;
 export type JenisReferensi = keyof Referensi;
+
+/** Isian saat membuat rekap pencairan / pengesahan */
+export interface IsianRekap {
+  tanggal: string;
+  /** wajib untuk rekap pencairan */
+  jenisBayar?: JenisPencairan;
+  referensi?: string;
+  catatan?: string;
+}
 
 /** Hasil pemeriksaan hak ubah/hapus sebuah dokumen oleh pengguna yang sedang masuk */
 export interface IzinUbah {
@@ -43,8 +51,8 @@ type Hasil = { ok: true; nama?: string } | { ok: false; pesan: string };
 
 interface StoreValue {
   kegiatan: Kegiatan[];
-  /** rekap SP3B BLU periode sebelum bulan berjalan (bulan berjalan dihitung di modul Pengesahan) */
-  pengesahan: Sp3bBlu[];
+  /** rekap pencairan & pengesahan, terbaru di atas */
+  rekap: Rekap[];
   /** semua profil, termasuk yang sudah dihapus (untuk nama di riwayat) */
   pengguna: Pengguna[];
   referensi: Referensi;
@@ -73,17 +81,13 @@ interface StoreValue {
 
   /* Belanja */
   tambahKegiatan: (k: KegiatanBaru) => Promise<Kegiatan | null>;
-  editKegiatan: (id: string, data: KegiatanBaru, catatan?: string) => Promise<{ berubah: number; kembaliKeDraf: boolean } | null>;
+  editKegiatan: (id: string, data: KegiatanBaru, catatan?: string) => Promise<{ berubah: number } | null>;
   hapusKegiatan: (id: string, alasan: string) => Promise<boolean>;
   izinUbah: (k: Kegiatan) => IzinUbah;
-  ubahStatus: (id: string, status: StatusBelanja) => Promise<boolean>;
 
-  /* Pencairan */
-  buatSpp: (id: string, jenis: JenisSpp, tanggal: string) => Promise<string | null>;
-  majukanTahap: (id: string) => Promise<Kegiatan | null>;
-
-  /* Pengesahan */
-  sahkan: (ids: string[]) => Promise<string | null>;
+  /* Pencairan & Pengesahan (rekap berceklist) */
+  buatRekap: (jenis: JenisRekap, ids: string[], isian: IsianRekap) => Promise<Rekap | null>;
+  batalRekap: (jenis: JenisRekap, nomor: string, alasan: string) => Promise<boolean>;
 
   /* Pengguna (lewat API server) */
   tambahPengguna: (p: { nama: string; email: string; peran: Peran; unit: string; sandi: string }) => Promise<boolean>;
@@ -118,17 +122,8 @@ export function useStore(): StoreValue {
   return ctx;
 }
 
-/** Status yang otomatis kembali ke Draf bila dokumennya diubah (perlu diverifikasi ulang) */
-export const STATUS_PERLU_ULANG: StatusBelanja[] = ["Diajukan", "Diverifikasi", "Disetujui", "Ditolak"];
-
-const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Unit", unit: "", aktif: false };
+const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Pengadaan", unit: "", aktif: false };
 const REFERENSI_KOSONG: Referensi = { akun: [], unit: [], penyedia: [], dana: [] };
-
-/** "SP3B-BLU-10/2026" → "2026-10" */
-const bulanSp3b = (nomor: string) => {
-  const m = nomor.match(/(\d{2})\/(\d{4})$/);
-  return m ? `${m[2]}-${m[1]}` : "";
-};
 
 /** Pesan galat login Supabase Auth dalam bahasa Indonesia */
 function pesanLogin(e: { message: string; status?: number; code?: string }): string {
@@ -142,7 +137,7 @@ function pesanLogin(e: { message: string; status?: number; code?: string }): str
 
 export default function StoreProvider({ children }: { children: ReactNode }) {
   const [kegiatan, setKegiatan] = useState<Kegiatan[]>([]);
-  const [sp3b, setSp3b] = useState<BarisSp3b[]>([]);
+  const [rekap, setRekap] = useState<Rekap[]>([]);
   const [pengguna, setPengguna] = useState<Pengguna[]>([]);
   const [referensi, setReferensi] = useState<Referensi>(REFERENSI_KOSONG);
   const [aktivitas, setAktivitas] = useState<Aktivitas[]>([]);
@@ -173,7 +168,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     setProfil(null);
     setIzinSaya(new Set());
     setKegiatan([]);
-    setSp3b([]);
+    setRekap([]);
     setPengguna([]);
     setReferensi(REFERENSI_KOSONG);
     setAktivitas([]);
@@ -184,7 +179,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     const sb = () => supabase();
     return {
       kegiatan: async () => setKegiatan(await muatKegiatan(sb())),
-      sp3b: async () => setSp3b(await muatSp3b(sb())),
+      rekap: async () => setRekap(await muatRekap(sb())),
       pengguna: async () => {
         const daftar = await muatPengguna(sb());
         setPengguna(daftar);
@@ -285,10 +280,13 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     const kanal = sb
       .channel("belanjaku-data")
       .on("postgres_changes", { event: "*", schema: "public", table: "pengajuan" }, () => jadwal("kegiatan"))
-      .on("postgres_changes", { event: "*", schema: "public", table: "spp" }, () => jadwal("kegiatan"))
-      .on("postgres_changes", { event: "*", schema: "public", table: "pengesahan" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "rekap_pencairan" }, () => {
         jadwal("kegiatan");
-        jadwal("sp3b");
+        jadwal("rekap");
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "rekap_pengesahan" }, () => {
+        jadwal("kegiatan");
+        jadwal("rekap");
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "aktivitas" }, () => jadwal("aktivitas"))
       .on("postgres_changes", { event: "*", schema: "public", table: "pengguna" }, () => jadwal("pengguna"))
@@ -379,7 +377,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
 
   /* ---------- Riwayat aktivitas ---------- */
   const catatCetak: StoreValue["catatCetak"] = (k) => {
-    void rpc<Aktivitas>("catat_aktivitas", { p_jenis: "Cetak", p_aksi: "mencetak lembar pengajuan", p_objek_id: k.id, p_objek_label: k.uraian }).then(
+    void rpc<Aktivitas>("catat_aktivitas", { p_jenis: "Cetak", p_aksi: "mencetak lembar belanja", p_objek_id: k.id, p_objek_label: k.uraian }).then(
       (a) => a && tambahLog([a]),
     );
   };
@@ -410,7 +408,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   });
 
   const tambahKegiatan: StoreValue["tambahKegiatan"] = async (data) => {
-    if (!wajib("belanja.buat", "membuat pengajuan")) return null;
+    if (!wajib("belanja.buat", "mencatat dokumen belanja")) return null;
     const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("buat_pengajuan", { p_data: isiPengajuan(data) });
     if (!r) return null;
     const k = rapikanKegiatan(r.pengajuan);
@@ -420,16 +418,15 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   const izinUbah: StoreValue["izinUbah"] = (k) => {
-    if (!boleh("belanja.buat")) return { boleh: false, alasan: `Peran ${penggunaAktif.peran} tidak dapat mengubah atau menghapus pengajuan` };
+    if (!boleh("belanja.buat")) return { boleh: false, alasan: `Peran ${penggunaAktif.peran} tidak dapat mengubah atau menghapus dokumen belanja` };
     if (k.dibuatOleh !== penggunaAktif.id)
-      return { boleh: false, alasan: `Hanya ${infoPengguna(k.dibuatOleh).nama} (pembuat dokumen) yang dapat mengubah atau menghapus ${k.id}` };
-    if (k.disahkan) return { boleh: false, alasan: `${k.id} sudah disahkan sehingga tidak bisa diubah atau dihapus` };
-    if (k.spp) return { boleh: false, alasan: `${k.id} sudah masuk proses pencairan (${k.spp.no}) sehingga tidak bisa diubah atau dihapus` };
+      return { boleh: false, alasan: `Hanya ${infoPengguna(k.dibuatOleh).nama} (pencatat dokumen) yang dapat mengubah atau menghapus ${k.id}` };
+    if (k.pencairan) return { boleh: false, alasan: `${k.id} sudah dicairkan pada ${k.pencairan.nomor} sehingga tidak bisa diubah atau dihapus` };
     return { boleh: true };
   };
 
   const editKegiatan: StoreValue["editKegiatan"] = async (id, data, catatan) => {
-    const r = await rpc<{ berubah: number; kembaliKeDraf: boolean; pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("ubah_pengajuan", {
+    const r = await rpc<{ berubah: number; pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("ubah_pengajuan", {
       p_id: id,
       p_data: isiPengajuan(data),
       p_catatan: catatan?.trim() || null,
@@ -437,7 +434,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     if (!r) return null;
     pasangKegiatan(rapikanKegiatan(r.pengajuan));
     tambahLog(r.aktivitas);
-    return { berubah: r.berubah, kembaliKeDraf: r.kembaliKeDraf };
+    return { berubah: r.berubah };
   };
 
   const hapusKegiatan: StoreValue["hapusKegiatan"] = async (id, alasan) => {
@@ -448,69 +445,41 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const ubahStatus: StoreValue["ubahStatus"] = async (id, status) => {
-    const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("ubah_status_pengajuan", { p_id: id, p_status: status });
+  /* ---------- Pencairan & Pengesahan (rekap) ---------- */
+  const buatRekap: StoreValue["buatRekap"] = async (jenis, ids, isian) => {
+    const cair = jenis === "pencairan";
+    if (!wajib(cair ? "pencairan.rekap" : "pengesahan.sahkan", cair ? "mencairkan belanja" : "mengesahkan belanja")) return null;
+    const umum = {
+      p_ids: ids,
+      p_tanggal: isian.tanggal,
+      p_referensi: isian.referensi?.trim() || null,
+      p_catatan: isian.catatan?.trim() || null,
+    };
+    const r = await rpc<{ rekap: Rekap; pengajuan: Kegiatan[]; aktivitas: Aktivitas[] }>(
+      cair ? "buat_rekap_pencairan" : "buat_rekap_pengesahan",
+      cair ? { ...umum, p_jenis: isian.jenisBayar } : umum,
+    );
+    if (!r) return null;
+    const baru = rapikanRekap(r.rekap);
+    r.pengajuan.forEach((k) => pasangKegiatan(rapikanKegiatan(k)));
+    setRekap((prev) => [baru, ...prev.filter((x) => !(x.jenisRekap === jenis && x.nomor === baru.nomor))]);
+    tambahLog(r.aktivitas);
+    return baru;
+  };
+
+  const batalRekap: StoreValue["batalRekap"] = async (jenis, nomor, alasan) => {
+    const cair = jenis === "pencairan";
+    if (!wajib(cair ? "pencairan.rekap" : "pengesahan.sahkan", "membatalkan rekap")) return false;
+    const r = await rpc<{ pengajuan: Kegiatan[]; aktivitas: Aktivitas[] }>(cair ? "batal_rekap_pencairan" : "batal_rekap_pengesahan", {
+      p_nomor: nomor,
+      p_alasan: alasan.trim(),
+    });
     if (!r) return false;
-    pasangKegiatan(rapikanKegiatan(r.pengajuan));
+    r.pengajuan.forEach((k) => pasangKegiatan(rapikanKegiatan(k)));
+    setRekap((prev) => prev.filter((x) => !(x.jenisRekap === jenis && x.nomor === nomor)));
     tambahLog(r.aktivitas);
     return true;
   };
-
-  /* ---------- Pencairan ---------- */
-  const buatSpp: StoreValue["buatSpp"] = async (id, jenis, tgl) => {
-    if (!wajib("pencairan.spp", "menerbitkan SPP")) return null;
-    const r = await rpc<{ nomor: string; pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("buat_spp", { p_pengajuan_id: id, p_jenis: jenis, p_tanggal: tgl });
-    if (!r) return null;
-    pasangKegiatan(rapikanKegiatan(r.pengajuan));
-    tambahLog(r.aktivitas);
-    return r.nomor;
-  };
-
-  const majukanTahap: StoreValue["majukanTahap"] = async (id) => {
-    const r = await rpc<{ pengajuan: Kegiatan; aktivitas: Aktivitas[] }>("majukan_tahap_spp", { p_pengajuan_id: id });
-    if (!r) return null;
-    const k = rapikanKegiatan(r.pengajuan);
-    pasangKegiatan(k);
-    tambahLog(r.aktivitas);
-    return k;
-  };
-
-  /* ---------- Pengesahan ---------- */
-  const sahkan: StoreValue["sahkan"] = async (ids) => {
-    if (!wajib("pengesahan.sahkan", "mengesahkan belanja")) return null;
-    const r = await rpc<{ nomor: string; pengajuan: Kegiatan[]; aktivitas: Aktivitas[] }>("sahkan_pengajuan", { p_ids: ids });
-    if (!r) return null;
-    r.pengajuan.forEach((k) => pasangKegiatan(rapikanKegiatan(k)));
-    tambahLog(r.aktivitas);
-    segarkan.sp3b().catch(() => {});
-    return r.nomor;
-  };
-
-  /** Rekap SP3B per bulan dari dokumen BLU (+ saldo awal di tabel sp3b), tanpa bulan berjalan */
-  const pengesahan = useMemo<Sp3bBlu[]>(() => {
-    const kini = periodeBerjalan().bulan;
-    const peta = new Map<string, Sp3bBlu>();
-    const ambil = (bulan: string) => {
-      if (!peta.has(bulan)) {
-        const [th, mm] = bulan.split("-");
-        peta.set(bulan, { nomor: `SP3B-BLU-${mm}/${th}`, periode: `${NAMA_BULAN[Number(mm) - 1]} ${th}`, bulan, pencairan: 0, pengesahan: 0 });
-      }
-      return peta.get(bulan)!;
-    };
-    for (const s of sp3b) {
-      const x = ambil(s.bulan.slice(0, 7));
-      x.nomor = s.nomor;
-      x.periode = s.periode;
-      x.pencairan += s.pencairan_awal;
-      x.pengesahan += s.pengesahan_awal;
-    }
-    for (const k of kegiatan) {
-      if (k.dana !== "BLU" || !k.spp) continue;
-      if (k.spp.tahap === 4) ambil(k.spp.tanggal.slice(0, 7)).pencairan += k.nilai;
-      if (k.disahkan) ambil(bulanSp3b(k.disahkan.nomor)).pengesahan += k.nilai;
-    }
-    return [...peta.values()].filter((x) => x.bulan !== kini && x.bulan).sort((a, b) => b.bulan.localeCompare(a.bulan));
-  }, [kegiatan, sp3b]);
 
   /* ---------- Pengguna (API server: butuh kunci rahasia Supabase) ---------- */
   const api = async <T,>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<T | null> => {
@@ -634,7 +603,7 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
 
   const value: StoreValue = {
     kegiatan,
-    pengesahan,
+    rekap,
     pengguna,
     referensi,
     aktivitas,
@@ -655,10 +624,8 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     editKegiatan,
     hapusKegiatan,
     izinUbah,
-    ubahStatus,
-    buatSpp,
-    majukanTahap,
-    sahkan,
+    buatRekap,
+    batalRekap,
     tambahPengguna,
     ubahPengguna,
     toggleAktifPengguna,

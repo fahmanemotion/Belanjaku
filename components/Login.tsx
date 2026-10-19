@@ -12,11 +12,11 @@ import { useStore } from "./StoreProvider";
 
 /** Alur dokumen per peran, ditampilkan di panel kiri */
 const ALUR = [
-  { peran: "Operator Unit", aksi: "Ajukan belanja" },
-  { peran: "Administrator", aksi: "Verifikasi pagu" },
-  { peran: "PPK", aksi: "Setujui & terbitkan SPP" },
-  { peran: "PPSPM", aksi: "Uji SPP & terbitkan SPM" },
-  { peran: "Bendahara", aksi: "Catat SP2D & sahkan" },
+  { peran: "Pengadaan", aksi: "Catat dokumen belanja" },
+  { peran: "Keuangan", aksi: "Centang & rekap pencairan" },
+  { peran: "Keuangan", aksi: "Centang & rekap pengesahan" },
+  { peran: "PPK & PPSPM", aksi: "Pantau dokumen" },
+  { peran: "Administrator", aksi: "Kelola pengguna & referensi" },
 ];
 
 export default function Login() {
@@ -61,13 +61,13 @@ export default function Login() {
         </div>
 
         <div className="login-hero">
-          <h1>Belanja tertib, dari pengajuan sampai pengesahan.</h1>
-          <p>Setiap peran mengerjakan bagiannya, dan setiap langkah tercatat di riwayat aktivitas.</p>
+          <h1>Belanja tertib, dari pencatatan sampai pengesahan.</h1>
+          <p>Dokumen belanja dicatat terpusat oleh bagian pengadaan, lalu direkap keuangan saat dicairkan dan disahkan. Setiap langkah tercatat di riwayat aktivitas.</p>
         </div>
 
         <ol className="login-alur" aria-label="Alur dokumen per peran">
           {ALUR.map((a, i) => (
-            <li key={a.peran}>
+            <li key={i}>
               <span>{i + 1}</span>
               <b>{a.peran}</b>
               <em>{a.aksi}</em>

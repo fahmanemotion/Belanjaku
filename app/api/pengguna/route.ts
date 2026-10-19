@@ -30,7 +30,6 @@ export async function POST(req: Request) {
     const peran = b.peran as Peran;
     if (!PERAN_VALID.includes(peran)) throw new GalatApi(400, "Peran tidak dikenal");
     const unit = typeof b.unit === "string" ? b.unit.trim() : "";
-    if (peran === "Operator Unit" && !unit) throw new GalatApi(400, "Operator Unit wajib memilih unit kerja");
     const sandi = sandiValid(b.sandi);
 
     const sb = supabaseAdmin();

@@ -3,12 +3,22 @@
 import { useState } from "react";
 import Icon from "@/components/Icon";
 import { useStore } from "@/components/StoreProvider";
-import { Badge, Field, Modal, PageHead, SearchBox, Status } from "@/components/ui";
+import { Badge, Field, Modal, PageHead, SearchBox, Status, type Tone } from "@/components/ui";
 import type { Pengguna as TPengguna } from "@/lib/types";
 
 import { PERAN } from "@/lib/data";
 import { inisial } from "@/lib/format";
 import type { Peran } from "@/lib/types";
+
+/** Warna badge per peran: admin biru, pengadaan netral, keuangan hijau, pejabat pemantau kuning */
+const TONE_PERAN: Record<Peran, Tone> = {
+  Administrator: "i",
+  "Operator Pengadaan": "",
+  "Operator Keuangan": "g",
+  "Bendahara Pengeluaran": "g",
+  PPK: "w",
+  PPSPM: "w",
+};
 
 /** Kata sandi acak yang mudah dibacakan: 3 huruf + 4 angka + 3 huruf, mis. "Kap7314rum" */
 function sandiAcak() {
@@ -80,7 +90,7 @@ export default function Pengguna() {
               </div>
             </div>
             <div className="meta">
-              <Badge tone={u.peran === "Administrator" ? "i" : u.peran === "Operator Unit" ? "" : "w"}>{u.peran}</Badge>
+              <Badge tone={TONE_PERAN[u.peran] ?? ""}>{u.peran}</Badge>
               <Status tone={u.aktif ? "g" : "m"}>{u.aktif ? "Aktif" : "Nonaktif"}</Status>
             </div>
             <div className="meta">
@@ -167,8 +177,9 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
   const akunSendiri = awal?.id === ID_AKUN_SAYA;
   const [nama, setNama] = useState(awal?.nama ?? "");
   const [email, setEmail] = useState(awal?.email ?? "");
-  const [peran, setPeran] = useState<Peran>(awal?.peran ?? "Operator Unit");
-  const [unit, setUnit] = useState(awal ? awal.unit : (referensi.unit[0]?.kode ?? ""));
+  const [peran, setPeran] = useState<Peran>(awal?.peran ?? "Operator Pengadaan");
+  // Peran tidak lagi terikat unit kerja; unit hanya keterangan asal pengguna
+  const [unit, setUnit] = useState(awal ? awal.unit : "");
   const [aktif, setAktif] = useState(awal?.aktif ?? true);
   const [sandi, setSandi] = useState(() => (awal ? "" : sandiAcak()));
 
@@ -180,10 +191,6 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
     }
     if (pengguna.some((u) => !u.dihapus && u.email.toLowerCase() === em && u.id !== awal?.id)) {
       toast("Email ini sudah dipakai pengguna lain");
-      return;
-    }
-    if (peran === "Operator Unit" && !unit) {
-      toast("Operator Unit wajib memilih unit kerja");
       return;
     }
     if (awal) {
@@ -227,7 +234,7 @@ function FormPengguna({ onClose, awal }: { onClose: () => void; awal?: TPengguna
       </Field>
       <Field label="Unit kerja">
         <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-          {peran !== "Operator Unit" && <option value="">Tidak terikat unit</option>}
+          <option value="">Tidak terikat unit</option>
           {referensi.unit.map((u) => (
             <option key={u.kode} value={u.kode}>{u.nama}</option>
           ))}

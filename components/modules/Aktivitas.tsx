@@ -3,13 +3,13 @@
 /**
  * Riwayat Aktivitas — jejak audit seluruh tindakan operator.
  * Menjawab: siapa melakukan apa, kapan, pada dokumen mana, dan apa yang berubah.
- * Klik nomor dokumen untuk "melacak" seluruh perjalanan dokumen tersebut dari awal.
+ * Klik nomor dokumen (BLJ-…) atau nomor rekap (CAIR-… / SAH-…) untuk "melacak" seluruh perjalanannya dari awal.
  */
 import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/Icon";
 import { useStore } from "@/components/StoreProvider";
 import { TONE_BELANJA } from "@/components/modules/Belanja";
-import { Badge, PageHead, Saring, SearchBox, Status } from "@/components/ui";
+import { Badge, BadgeDana, PageHead, Saring, SearchBox, Status } from "@/components/ui";
 import { JENIS_AKTIVITAS, MODUL_AKTIVITAS } from "@/lib/data";
 import { hariIni, inisial, jam, rupiah, selisihHari, tanggal, tanggalJam, tanggalPanjang } from "@/lib/format";
 import type { Aktivitas as TAktivitas, JenisAktivitas, ModulAktivitas } from "@/lib/types";
@@ -22,8 +22,8 @@ const PER_HALAMAN = 40;
 const infoJenis = (j: JenisAktivitas) => JENIS_AKTIVITAS.find((x) => x.value === j)!;
 
 export default function Aktivitas() {
-  const { aktivitas, kegiatan, pengguna, infoPengguna, boleh, jejakDokumen } = useStore();
-  // Tanpa izin "lihat semua" (Operator Unit), database hanya mengirim aktivitas sendiri + dokumen unitnya
+  const { aktivitas, kegiatan, rekap, pengguna, infoPengguna, boleh, jejakDokumen } = useStore();
+  // Tanpa izin "aktivitas.semua" (mis. Operator Pengadaan), database hanya mengirim aktivitas sendiri + aktivitas dokumen belanja
   const lihatSemua = boleh("aktivitas.semua");
   // "Hari ini" baru dihitung di browser agar tidak berbeda dengan hasil render server
   const [hari, setHari] = useState<string | null>(null);
@@ -136,8 +136,10 @@ export default function Aktivitas() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const dokLacak = lacak ? kegiatan.find((k) => k.id === lacak) : undefined;
+  const rekapLacak = lacak ? rekap.find((r) => r.nomor === lacak) : undefined;
   const logLacak = lacak ? hasil : [];
   const dokDihapus = lacak ? !dokLacak && logLacak.some((a) => a.jenis === "Hapus") : false;
+  const rekapBatal = lacak ? !rekapLacak && logLacak.some((a) => a.aksi.startsWith("membatalkan rekap")) : false;
 
   /* ---------- Ekspor CSV (untuk arsip / pemeriksaan) ---------- */
   const ekspor = () => {
@@ -214,16 +216,29 @@ export default function Aktivitas() {
             <div className="lacak-isi">
               <p className="lbl">Melacak dokumen</p>
               <h3>
-                <span className="mono">{lacak}</span> {dokLacak?.uraian ?? logLacak[0]?.objekLabel}
+                <span className="mono">{lacak}</span>{" "}
+                {dokLacak?.uraian ?? (rekapLacak ? `Rekap ${rekapLacak.jenisRekap} ${rekapLacak.dana}` : logLacak[0]?.objekLabel)}
               </h3>
               <div className="lacak-meta">
                 {dokLacak ? (
-                  <Status tone={TONE_BELANJA[dokLacak.status]}>{dokLacak.status}</Status>
+                  <>
+                    <Status tone={TONE_BELANJA[dokLacak.status]}>{dokLacak.status}</Status>
+                    {(dokLacak.pengesahan ?? dokLacak.pencairan) && <span className="mono">{(dokLacak.pengesahan ?? dokLacak.pencairan)!.nomor}</span>}
+                    <span>{rupiah(dokLacak.nilai)}</span>
+                    <span>dicatat oleh {infoPengguna(dokLacak.dibuatOleh).nama}</span>
+                  </>
+                ) : rekapLacak ? (
+                  <>
+                    <BadgeDana dana={rekapLacak.dana} />
+                    {rekapLacak.jenisBayar && <Badge>{rekapLacak.jenisBayar}</Badge>}
+                    <span>
+                      {rekapLacak.jumlah} belanja · {rupiah(rekapLacak.total)}
+                    </span>
+                    <span>dibuat oleh {infoPengguna(rekapLacak.dibuatOleh).nama}</span>
+                  </>
                 ) : (
-                  <Badge tone={dokDihapus ? "b" : ""}>{dokDihapus ? "Sudah dihapus" : "Tidak ditemukan"}</Badge>
+                  <Badge tone={dokDihapus || rekapBatal ? "b" : ""}>{dokDihapus ? "Sudah dihapus" : rekapBatal ? "Rekap dibatalkan" : "Tidak ditemukan"}</Badge>
                 )}
-                {dokLacak && <span>{rupiah(dokLacak.nilai)}</span>}
-                {dokLacak && <span>dibuat oleh {infoPengguna(dokLacak.dibuatOleh).nama}</span>}
                 <span>{logLacak.length} aktivitas</span>
               </div>
             </div>
@@ -238,7 +253,7 @@ export default function Aktivitas() {
               <h3>Linimasa</h3>
               <p className="sub">
                 {hasil.length} aktivitas{adaFilter ? " sesuai saringan" : ""}
-                {lihatSemua ? "" : " · aktivitas Anda & dokumen unit Anda"} · klik nomor dokumen untuk melacak perjalanannya
+                {lihatSemua ? "" : " · aktivitas Anda & aktivitas dokumen belanja"} · klik nomor dokumen atau rekap untuk melacak perjalanannya
               </p>
             </div>
             <div className="tbar filter-kegiatan filter-log">
@@ -313,7 +328,8 @@ function BarisLog({ a, onLacak }: { a: TAktivitas; onLacak?: (id: string) => voi
   const { infoPengguna, penggunaAktif } = useStore();
   const u = infoPengguna(a.oleh);
   const j = infoJenis(a.jenis);
-  const dokumen = a.objekId?.startsWith("BLJ-");
+  // nomor dokumen belanja (BLJ-…) atau nomor rekap pencairan / pengesahan (CAIR-… / SAH-…)
+  const dokumen = /^(BLJ|CAIR|SAH)-/.test(a.objekId ?? "");
 
   return (
     <li className={`log t-${j.tone || "n"}`}>

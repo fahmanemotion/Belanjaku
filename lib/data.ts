@@ -4,7 +4,7 @@
  * Data transaksi (pengajuan, pencairan, pengesahan, pengguna, referensi, aktivitas, Kertas Kerja POK)
  * sudah diambil dari database Supabase — lihat components/StoreProvider.tsx dan lib/db.ts.
  */
-import type { JenisAktivitas, JenisDokumen, ModulAktivitas, Peran, StatusBelanja } from "./types";
+import type { JenisAktivitas, JenisDokumen, JenisPencairan, ModulAktivitas, Peran, StatusBelanja } from "./types";
 
 export const TAHUN_ANGGARAN = 2026;
 export const KODE_DIPA = "DIPA 022.12.4.287494";
@@ -98,18 +98,6 @@ function susunJenis(dana: Dana, pagu: Record<JenisBelanja, number>, realPegawai:
 export const PAGU_JENIS: Record<Dana, Record<JenisBelanja, { pagu: number; realisasi: number }>> = {
   RM: susunJenis("RM", { Pegawai: 24_800_000_000, Barang: 4_900_000_000, Modal: 1_500_000_000 }, 19_642_150_000, 412_600_000),
   BLU: susunJenis("BLU", { Pegawai: 18_400_000_000, Barang: 33_750_000_000, Modal: 12_700_000_000 }, 13_905_400_000, 3_368_750_000),
-};
-
-/**
- * Ringkasan kartu sumber dana.
- * - BLU: pengesahan = belanja yang sudah disahkan lewat SP3B BLU (dihitung dari modul Pengesahan),
- *        pencairan = realisasi yang sudah cair tetapi belum disahkan.
- * - RM : pengesahan = pertanggungjawaban UP lewat SPM GU Nihil,
- *        pencairan = SP2D LS/UP/GU/TUP.
- */
-export const RINGKASAN_DANA: Record<Dana, { nama: string; kegiatan: number; kegiatanSelesai: number; pengesahanRM?: number }> = {
-  BLU: { nama: "PNBP BLU", kegiatan: 48, kegiatanSelesai: 29 },
-  RM: { nama: "Rupiah Murni", kegiatan: 17, kegiatanSelesai: 11, pengesahanRM: 1_845_300_000 },
 };
 
 /* =========================================================
@@ -298,7 +286,7 @@ export function labelJenisAkun(akun: string): string {
   return `${jenis} (${akun.startsWith("525") || akun.startsWith("537") ? "BLU" : "RM"})`;
 }
 
-/** Lima jenis dokumen pengajuan beserta warna badge, ikon, dan contoh nomornya */
+/** Lima jenis dokumen belanja beserta warna badge, ikon, dan contoh nomornya */
 export const JENIS_DOKUMEN: {
   value: JenisDokumen;
   info: string;
@@ -315,23 +303,17 @@ export const JENIS_DOKUMEN: {
 
 export const infoJenisDokumen = (j: JenisDokumen) => JENIS_DOKUMEN.find((x) => x.value === j) ?? JENIS_DOKUMEN[0];
 
-/* ---------- Periode SP3B BLU berjalan (zona waktu Makassar, WITA = UTC+8) ---------- */
-export function periodeBerjalan(sekarang = new Date()) {
-  const wita = new Date(sekarang.getTime() + 8 * 3600 * 1000);
-  const th = wita.getUTCFullYear();
-  const bl = wita.getUTCMonth() + 1;
-  const mm = String(bl).padStart(2, "0");
-  return { nomor: `SP3B-BLU-${mm}/${th}`, periode: `${NAMA_BULAN[bl - 1]} ${th}`, bulan: `${th}-${mm}` };
-}
+export const PERAN: Peran[] = ["Administrator", "Operator Pengadaan", "Operator Keuangan", "Bendahara Pengeluaran", "PPK", "PPSPM"];
 
-/** Data contoh kartu BLU: pengesahan SP3B Januari–September (sebelum aplikasi dipakai) */
-export const CONTOH_PENGESAHAN_BLU = jumlah(REALISASI_BULANAN.BLU.slice(0, BULAN_BERJALAN - 1)) - 352_500_000;
+/** Urutan status dokumen belanja: dicatat pengadaan → dicairkan → disahkan */
+export const STATUS_BELANJA: StatusBelanja[] = ["Belum dicairkan", "Dicairkan", "Disahkan"];
 
-export const PERAN: Peran[] = ["Administrator", "PPK", "PPSPM", "Bendahara Pengeluaran", "Operator Unit"];
-
-export const STATUS_BELANJA: StatusBelanja[] = ["Draf", "Diajukan", "Diverifikasi", "Disetujui", "Ditolak"];
-
-export const NAMA_TAHAP = ["", "SPP", "Verifikasi", "SPM", "SP2D"] as const;
+/** Mekanisme pembayaran pada rekap pencairan */
+export const JENIS_PENCAIRAN: { value: JenisPencairan; label: string }[] = [
+  { value: "LS", label: "LS — Langsung ke penyedia" },
+  { value: "GU", label: "GU — Ganti Uang" },
+  { value: "TUP", label: "TUP — Tambahan UP" },
+];
 
 /* ---------- Riwayat aktivitas (jejak audit) ---------- */
 
@@ -340,7 +322,7 @@ export const JENIS_AKTIVITAS: { value: JenisAktivitas; label: string; tone: "g" 
   { value: "Ubah", label: "Ubah", tone: "w" },
   { value: "Hapus", label: "Hapus", tone: "b" },
   { value: "Cetak", label: "Cetak", tone: "m" },
-  { value: "Status", label: "Status pengajuan", tone: "i" },
+  { value: "Status", label: "Status dokumen", tone: "i" },
   { value: "Pencairan", label: "Pencairan", tone: "i" },
   { value: "Pengesahan", label: "Pengesahan", tone: "g" },
   { value: "Pengguna", label: "Pengguna", tone: "" },

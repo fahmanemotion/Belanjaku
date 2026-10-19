@@ -6,7 +6,7 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { labelJenisAkun } from "./data";
 import type { DataPok } from "./mak";
-import type { Aktivitas, Kegiatan, Pengguna, Peran, Referensi, StatusBelanja } from "./types";
+import type { Aktivitas, JenisPencairan, Kegiatan, Pengguna, Peran, Referensi, Rekap, StatusBelanja, SumberDana } from "./types";
 
 /* ---------- Galat ---------- */
 type Galat = Pick<PostgrestError, "message"> & { code?: string };
@@ -17,6 +17,7 @@ export function pesanGalat(e: Galat | Error | null | undefined): string {
   if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) return "Tidak dapat terhubung ke server. Periksa koneksi internet lalu coba lagi.";
   if (/JWT expired|invalid JWT|Sesi tidak valid/i.test(m)) return "Sesi berakhir atau akun dinonaktifkan. Silakan masuk kembali.";
   if (/permission denied/i.test(m)) return "Anda tidak berwenang melakukan aksi ini";
+  if (/Could not find the function/i.test(m)) return "Database belum diperbarui ke versi aplikasi ini. Hubungi Administrator.";
   return m;
 }
 
@@ -57,12 +58,11 @@ interface BarisVPengajuan {
   tanggal: string;
   status: StatusBelanja;
   dibuat_oleh: string;
-  spp_nomor: string | null;
-  spp_jenis: "LS" | "GU" | "TUP" | null;
-  spp_tahap: 1 | 2 | 3 | 4 | null;
-  spp_tanggal: string | null;
-  disahkan_nomor: string | null;
-  disahkan_tanggal: string | null;
+  pencairan_nomor: string | null;
+  pencairan_tanggal: string | null;
+  pencairan_jenis: JenisPencairan | null;
+  pengesahan_nomor: string | null;
+  pengesahan_tanggal: string | null;
 }
 
 export function keKegiatan(r: BarisVPengajuan): Kegiatan {
@@ -81,13 +81,43 @@ export function keKegiatan(r: BarisVPengajuan): Kegiatan {
     tanggal: r.tanggal,
     status: r.status,
     dibuatOleh: r.dibuat_oleh,
-    spp: r.spp_nomor ? { no: r.spp_nomor, jenis: r.spp_jenis!, tahap: r.spp_tahap!, tanggal: r.spp_tanggal! } : undefined,
-    disahkan: r.disahkan_nomor ? { nomor: r.disahkan_nomor, tanggal: r.disahkan_tanggal! } : undefined,
+    pencairan: r.pencairan_nomor ? { nomor: r.pencairan_nomor, tanggal: r.pencairan_tanggal!, jenis: r.pencairan_jenis! } : undefined,
+    pengesahan: r.pengesahan_nomor ? { nomor: r.pengesahan_nomor, tanggal: r.pengesahan_tanggal! } : undefined,
   };
 }
 
-/** Pengajuan hasil RPC (sudah berbentuk Kegiatan; angka dijamin number) */
+/** Dokumen hasil RPC (sudah berbentuk Kegiatan; angka dijamin number) */
 export const rapikanKegiatan = (k: Kegiatan): Kegiatan => ({ ...k, nilai: Number(k.nilai) });
+
+/** Rekap hasil RPC (sudah berbentuk Rekap; angka dijamin number) */
+export const rapikanRekap = (r: Rekap): Rekap => ({ ...r, jumlah: Number(r.jumlah), total: Number(r.total) });
+
+interface BarisRekap {
+  nomor: string;
+  tanggal: string;
+  dana: SumberDana;
+  jenis?: JenisPencairan;
+  referensi: string | null;
+  catatan: string | null;
+  jumlah: number;
+  total: number;
+  dibuat_oleh: string;
+  created_at: string;
+}
+
+const keRekap = (r: BarisRekap, jenisRekap: Rekap["jenisRekap"]): Rekap => ({
+  nomor: r.nomor,
+  jenisRekap,
+  tanggal: r.tanggal,
+  dana: r.dana,
+  jenisBayar: r.jenis ?? undefined,
+  referensi: r.referensi ?? undefined,
+  catatan: r.catatan ?? undefined,
+  jumlah: Number(r.jumlah),
+  total: Number(r.total),
+  dibuatOleh: r.dibuat_oleh,
+  dibuatPada: waktuLokal(r.created_at),
+});
 
 interface BarisPengguna {
   id: string;
@@ -135,20 +165,26 @@ export const keAktivitas = (r: BarisAktivitas): Aktivitas => ({
   catatan: r.catatan ?? undefined,
 });
 
-export interface BarisSp3b {
-  nomor: string;
-  bulan: string;
-  periode: string;
-  pencairan_awal: number;
-  pengesahan_awal: number;
-}
-
 /* ---------- Pemuat data ---------- */
 export async function muatKegiatan(sb: SupabaseClient): Promise<Kegiatan[]> {
   const baris = await ambilSemua<BarisVPengajuan>((dari, sampai) =>
     sb.from("v_pengajuan").select("*").order("id", { ascending: false }).range(dari, sampai),
   );
   return baris.map(keKegiatan);
+}
+
+/** Semua rekap pencairan & pengesahan, terbaru di atas */
+export async function muatRekap(sb: SupabaseClient): Promise<Rekap[]> {
+  const kolom = "nomor, tanggal, dana, referensi, catatan, jumlah, total, dibuat_oleh, created_at";
+  const [cair, sah] = await Promise.all([
+    ambilSemua<BarisRekap>((dari, sampai) =>
+      sb.from("rekap_pencairan").select(`${kolom}, jenis`).order("created_at", { ascending: false }).range(dari, sampai),
+    ),
+    ambilSemua<BarisRekap>((dari, sampai) =>
+      sb.from("rekap_pengesahan").select(kolom).order("created_at", { ascending: false }).range(dari, sampai),
+    ),
+  ]);
+  return [...cair.map((r) => keRekap(r, "pencairan")), ...sah.map((r) => keRekap(r, "pengesahan"))];
 }
 
 export async function muatPengguna(sb: SupabaseClient): Promise<Pengguna[]> {
@@ -183,12 +219,6 @@ export async function muatAktivitas(sb: SupabaseClient): Promise<Aktivitas[]> {
     .limit(1000);
   if (error) throw error;
   return (data as BarisAktivitas[]).map(keAktivitas);
-}
-
-export async function muatSp3b(sb: SupabaseClient): Promise<BarisSp3b[]> {
-  const { data, error } = await sb.from("sp3b").select("nomor, bulan, periode, pencairan_awal, pengesahan_awal").order("bulan", { ascending: false });
-  if (error) throw error;
-  return (data ?? []).map((r) => ({ ...r, pencairan_awal: Number(r.pencairan_awal), pengesahan_awal: Number(r.pengesahan_awal) }));
 }
 
 export async function muatPok(sb: SupabaseClient): Promise<DataPok | null> {

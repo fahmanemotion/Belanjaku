@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Pratinjau & cetak "Lembar Pengajuan Belanja" (kertas A4).
+ * Pratinjau & cetak "Lembar Dokumen Belanja" (kertas A4).
  * Lembar dirender di atas halaman; saat dicetak hanya lembar ini yang ikut (lihat @media print di globals.css).
  * Setiap kali tombol Cetak ditekan, aksinya dicatat di Riwayat Aktivitas.
  */
@@ -9,8 +9,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Icon from "./Icon";
 import { useStore } from "./StoreProvider";
-import { JENIS_BELANJA, NAMA_TAHAP, jenisBelanjaDariAkun } from "@/lib/data";
-import { hariIni, rupiah, sekarang, tanggalJam, tanggalPanjang, terbilang } from "@/lib/format";
+import { JENIS_BELANJA, jenisBelanjaDariAkun } from "@/lib/data";
+import { hariIni, rupiah, sekarang, tanggal, tanggalJam, tanggalPanjang, terbilang } from "@/lib/format";
 import type { Aktivitas, Kegiatan } from "@/lib/types";
 
 export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
@@ -52,10 +52,13 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
   // Jejak dokumen urut dari yang paling awal (aksi cetak tidak ikut ditampilkan)
   const jejak = (riwayat ?? []).filter((a) => a.jenis !== "Cetak").slice().reverse();
 
-  const status =
-    k.status +
-    (k.spp ? ` · ${k.spp.no} (tahap ${NAMA_TAHAP[k.spp.tahap]})` : "") +
-    (k.disahkan ? ` · disahkan ${k.disahkan.nomor}` : "");
+  const status = [
+    k.status,
+    k.pencairan && `rekap pencairan ${k.pencairan.nomor} (${k.pencairan.jenis}, ${tanggal(k.pencairan.tanggal)})`,
+    k.pengesahan && `rekap pengesahan ${k.pengesahan.nomor} (${tanggal(k.pengesahan.tanggal)})`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const cetak = () => {
     catatCetak(k);
@@ -88,7 +91,7 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
             <h2>Politeknik Ilmu Pelayaran Makassar</h2>
           </header>
 
-          <h1>Lembar Pengajuan Belanja</h1>
+          <h1>Lembar Dokumen Belanja</h1>
           <p className="nomor">Nomor: {k.id}</p>
 
           <table className="rincian">
@@ -149,7 +152,7 @@ export default function CetakKegiatan({ k, onClose }: { k: Kegiatan; onClose: ()
 
           <div className="ttd">
             <div>
-              <p>Dibuat oleh,</p>
+              <p>Dicatat oleh,</p>
               <p>{pembuat.peran}</p>
               <div className="ruang" />
               <p className="nama">{pembuat.nama}</p>

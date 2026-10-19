@@ -6,18 +6,43 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 - **Database & login:** Supabase (PostgreSQL, Auth, Storage, Realtime).
 - **Hosting:** Vercel (region fungsi `sin1` Singapura, dekat dengan database di `ap-southeast-1`).
 
-> Semua data tersimpan di database: pengajuan, pencairan, pengesahan, pengguna, referensi, riwayat aktivitas,
-> Kertas Kerja POK, dan kartu **Pagu Belanja** di Dashboard (dihitung dari FA Detail yang diunggah).
-> Yang **masih data contoh** dan diberi label *Data contoh*: kartu BLU & RM, grafik Target vs Realisasi,
-> dan panel Target per Jenis Belanja (lihat `lib/data.ts`).
+> Semua data tersimpan di database: dokumen belanja, rekap pencairan & pengesahan, pengguna, referensi,
+> riwayat aktivitas, Kertas Kerja POK, kartu **Pagu Belanja** (dari FA Detail yang diunggah), dan kartu **BLU & RM**
+> (dari rekap pencairan & pengesahan). Yang **masih data contoh** dan diberi label *Data contoh*: grafik
+> Target vs Realisasi dan panel Target per Jenis Belanja (lihat `lib/data.ts`).
+
+## Alur dokumen
+
+```
+Belanja (bagian pengadaan)        Pencairan (keuangan)                 Pengesahan (keuangan)
+catat dokumen belanja      ──▶    centang belanja → Cairkan     ──▶    centang belanja → Sahkan
+status: Belum dicairkan           rekap CAIR-2026-0001                 rekap SAH-2026-0001
+                                  status: Dicairkan                    status: Disahkan
+```
+
+1. **Belanja** — bagian pengadaan barang/jasa mencatat semua dokumen belanja kebutuhan unit kerja di satu tempat
+   (boleh beberapa operator sekaligus, untuk unit kerja mana pun). Dokumen yang tersimpan **langsung masuk Daftar Pencairan**.
+   Dokumen hanya bisa diubah / dihapus oleh **pencatatnya** dan hanya **selama belum dicairkan**.
+2. **Pencairan** — Operator Keuangan / Bendahara membuka *Daftar Belanja*, memilih tab **RM** atau **BLU**, **mencentang**
+   belanja yang dibayarkan ke penyedia/pihak ketiga, lalu klik **Cairkan** (isi tanggal, jenis pembayaran LS/GU/TUP,
+   No. SP2D/SPM bila ada). Belanja terpilih menjadi satu **rekap pencairan**, hilang dari daftar, dan pindah ke detail
+   rekap di **Riwayat**.
+3. **Pengesahan** — belanja yang sudah dicairkan otomatis muncul di *Daftar Belanja* modul Pengesahan. Centang lalu klik
+   **Sahkan** → satu **rekap pengesahan** di Riwayat Pengesahan. Tanggal pengesahan tidak boleh sebelum tanggal pencairan.
+
+- **Satu rekap = satu sumber dana** (RM saja atau BLU saja).
+- Rekap yang keliru bisa **dibatalkan** dari Riwayat (wajib alasan); belanjanya kembali ke daftar dan nomor rekap
+  tidak dipakai lagi. Rekap pencairan tidak bisa dibatalkan bila sebagian belanjanya sudah disahkan — batalkan rekap
+  pengesahannya dulu.
+- Semua langkah (catat, ubah, hapus, rekap, batal) tercatat di **Riwayat Aktivitas**; nomor dokumen dan nomor rekap bisa dilacak.
 
 ## Cara kerja singkat
 
 | Bagian | Cara kerja |
 |---|---|
 | Login | Supabase Auth (email + kata sandi). Akun dibuat Administrator; tidak ada pendaftaran publik. |
-| Membaca data | Browser membaca tabel lewat Supabase dengan **Row Level Security (RLS)**: pengguna nonaktif tidak bisa membaca apa pun, Operator Unit hanya melihat pengajuan unitnya. |
-| Mengubah data | **Hanya lewat fungsi RPC di database** (`buat_pengajuan`, `ubah_status_pengajuan`, `buat_spp`, dst.). Setiap fungsi memeriksa peran, pemilik dokumen, status, dan sisa pagu MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
+| Membaca data | Browser membaca tabel lewat Supabase dengan **Row Level Security (RLS)**: pengguna nonaktif tidak bisa membaca apa pun. |
+| Mengubah data | **Hanya lewat fungsi RPC di database** (`buat_pengajuan`, `buat_rekap_pencairan`, `buat_rekap_pengesahan`, dst.). Setiap fungsi memeriksa peran, pencatat dokumen, status, sumber dana, dan sisa pagu MAK, lalu mencatat riwayat aktivitas dalam satu transaksi. Browser tidak bisa INSERT/UPDATE/DELETE langsung. |
 | Kelola akun | Tambah/ubah/hapus pengguna dan atur ulang kata sandi lewat API server Next.js (`app/api/pengguna/…`) memakai *secret key*. Pemanggil diperiksa: harus Administrator aktif. |
 | File FA Detail | File asli `.xlsx` disimpan di Storage bucket privat **`fa-detail`**. |
 | Realtime | Perubahan oleh pengguna lain langsung tampil tanpa refresh. |
@@ -28,8 +53,22 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan** |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan, peran baru; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
+
+### Memperbarui database (migrasi baru)
+
+Setiap file baru di `supabase/migrations/` dijalankan **sekali**, berurutan menurut nama file, **sebelum** kode versi
+barunya di-push:
+
+1. Dashboard Supabase → **SQL Editor** → *New query*.
+2. Buka file migrasinya di VS Code, salin **seluruh** isinya, tempel, lalu **Run**. Bila muncul peringatan
+   *destructive operation*, pilih **Run this query**.
+3. Berhasil bila tertulis *Success. No rows returned*. Bila gagal, tidak ada yang berubah (seluruh isi file berjalan
+   dalam satu transaksi) — baca pesan galatnya.
+
+`20261019090000_alur_rekap_pencairan.sql` mengubah peran **Operator Unit → Operator Pengadaan**, mengganti tabel alur lama
+(`spp`, `sp3b`, `pengesahan`) dengan `rekap_pencairan` & `rekap_pengesahan`, dan berhenti sendiri bila tabel alur lama sudah berisi data.
 
 ### Langkah pertama (sekali saja, di dashboard Supabase)
 
@@ -87,11 +126,11 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 
 | Peran | Modul yang terbuka | Yang bisa dilakukan |
 |---|---|---|
-| Operator Unit | Dashboard, Belanja, Aktivitas, Referensi | Buat, ubah, hapus, dan ajukan pengajuan **unitnya sendiri** (hanya dokumen buatannya); melihat aktivitas dokumen unitnya; **upload FA Detail** |
-| Administrator | Semua modul | Verifikasi pagu pengajuan, kelola pengguna & referensi, membuat pengajuan, **upload FA Detail**; melihat pencairan & pengesahan |
-| PPK | Semua kecuali Pengguna | Setujui / tolak pengajuan yang sudah diverifikasi, terbitkan SPP |
-| PPSPM | Semua kecuali Pengguna | Uji SPP dan terbitkan SPM |
-| Bendahara Pengeluaran | Semua kecuali Pengguna | Catat SP2D terbit, sahkan belanja BLU (SP3B) |
+| Operator Pengadaan | Dashboard, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja |
+| Operator Keuangan | Semua kecuali Pengguna | **Rekap pencairan** dan **rekap pengesahan** (centang belanja), batalkan rekap |
+| Bendahara Pengeluaran | Semua kecuali Pengguna | Sama dengan Operator Keuangan |
+| PPK, PPSPM | Semua kecuali Pengguna | Memantau dokumen belanja, pencairan, pengesahan, dan riwayat aktivitas (hanya melihat) |
+| Administrator | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, **upload FA Detail**; melihat pencairan & pengesahan |
 
 - Aturan tampilan ada di **`lib/akses.ts`** (tabel `AKSES`); aturan yang sama tersimpan di database (tabel **`izin_peran`**)
   dan dipakai RLS serta fungsi RPC. Bila pembagian tugas berubah, ubah **keduanya**.
@@ -105,15 +144,15 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 | Route         | Isi |
 |---------------|-----|
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
-| `/belanja`    | Pengajuan belanja: Draf → Diajukan → Diverifikasi → Disetujui/Ditolak; MAK dari Kertas Kerja POK; edit/hapus oleh pembuat; cetak lembar pengajuan |
-| `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen; ekspor CSV |
-| `/pencairan`  | SPP → Uji SPP → SPM → SP2D, filter LS/GU/TUP |
-| `/pengesahan` | Riwayat SP3B BLU per bulan dan pengesahan belanja BLU periode berjalan |
+| `/belanja`    | Catat dokumen belanja (bagian pengadaan); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
+| `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen (BLJ-…) atau rekap (CAIR-… / SAH-…); ekspor CSV |
+| `/pencairan`  | **Daftar Belanja** berceklist (tab RM / BLU) → **Cairkan** menjadi rekap pencairan; **Riwayat** rekap beserta detail belanja dan status pengesahannya; batal rekap |
+| `/pengesahan` | **Daftar Belanja** yang sudah dicairkan (berceklist) → **Sahkan** menjadi rekap pengesahan; **Riwayat** rekap beserta detail belanja; batal rekap |
 | `/referensi`  | Akun belanja, unit kerja, penyedia, sumber dana (tambah & ubah oleh Administrator) |
 | `/pengguna`   | Kelola pengguna, peran, status, atur ulang kata sandi (khusus Administrator) |
 
-Nomor dokumen dibuat database: pengajuan `BLJ-2026-0001`, SPP `00001/SPP-LS/2026`, SP3B `SP3B-BLU-10/2026`
-(bulan menurut waktu Makassar). Nomor tidak dipakai ulang walau dokumennya dihapus.
+Nomor dibuat database: dokumen belanja `BLJ-2026-0001`, rekap pencairan `CAIR-2026-0001`, rekap pengesahan `SAH-2026-0001`
+(tahun rekap mengikuti tanggal pencairan/pengesahan). Nomor tidak dipakai ulang walau dokumennya dihapus atau rekapnya dibatalkan.
 
 ### Kertas Kerja POK & upload FA Detail
 
@@ -124,20 +163,22 @@ Di Dashboard, klik judul tabel **Kegiatan Belanja** lalu pilih **Kertas Kerja PO
 - **Sisa anggaran** = pagu − lock pagu − realisasi s.d. periode (sama dengan kolom SISA ANGGARAN di SAKTI).
 - Tabel dibagi per halaman, **30 baris per halaman**. Warna sumber dana: **RM gelap**, **BLU oranye**.
 
-**Upload FA Detail** (Administrator & Operator Unit): unduh dari SAKTI *Laporan Realisasi SP2D — FA Detail 16 Segmen*
+**Upload FA Detail** (Administrator & Operator Pengadaan): unduh dari SAKTI *Laporan Realisasi SP2D — FA Detail 16 Segmen*
 per Program sampai **Item** (atau sampai Akun) dalam format **Excel (.xlsx)**, klik **Upload FA Detail**, pilih / seret filenya.
 Aplikasi menampilkan ringkasan dan hasil validasi (total dicocokkan dengan baris **JUMLAH SELURUHNYA**, jumlah item dengan nilai akun,
 kode satker 287494). Setelah **Terapkan data**:
 
 - file asli disimpan di Storage `fa-detail`, isinya disimpan di tabel `pok_*`, dan menjadi **POK aktif** untuk tahunnya
   (unggahan lama tetap tersimpan sebagai riwayat);
-- kartu **Pagu Belanja**, tabel Kertas Kerja POK, daftar MAK di form pengajuan, dan batas sisa pagu MAK langsung memakai data baru
+- kartu **Pagu Belanja**, tabel Kertas Kerja POK, daftar MAK di form catat belanja, dan batas sisa pagu MAK langsung memakai data baru
   untuk semua pengguna; unggahan tercatat di riwayat aktivitas.
 
 ### Cara angka di kartu dihitung
 
 - **Pagu Belanja (RM + BLU)** = jumlah pagu, lock, dan realisasi per jenis belanja (51 Pegawai, 52 Barang, 53 Modal) dari FA Detail aktif.
-- **Kartu BLU & RM** (masih data contoh): Total Belanja = Nilai Pencairan + Nilai Pengesahan.
+- **Kartu BLU & RM**: pagu dari FA Detail aktif; **Nilai Pencairan** = belanja yang sudah dicairkan tetapi belum disahkan;
+  **Nilai Pengesahan** = belanja yang sudah disahkan; **Total Belanja** = Nilai Pencairan + Nilai Pengesahan (persen dari pagu);
+  **Total Kegiatan** = jumlah dokumen belanja dana tersebut.
 
 ## Database
 
@@ -146,14 +187,16 @@ kode satker 287494). Setelah **Terapkan data**:
 | `izin_peran` | Matriks izin per peran (sama dengan `lib/akses.ts`) |
 | `unit_kerja`, `sumber_dana`, `akun`, `penyedia` | Referensi |
 | `pengguna` | Profil pengguna, tertaut ke akun Supabase Auth (`auth_id`) |
-| `pengajuan`, `spp`, `sp3b`, `pengesahan` | Alur dokumen belanja; view `v_pengajuan` untuk dibaca aplikasi |
+| `pengajuan` | Dokumen belanja (kolom `pencairan_nomor`, `pengesahan_nomor` menunjuk rekapnya) |
+| `rekap_pencairan`, `rekap_pengesahan` | Rekap berceklist: tanggal, sumber dana, jenis pembayaran (pencairan), No. referensi, jumlah & total |
+| view `v_pengajuan` | Dokumen belanja + status (*Belum dicairkan / Dicairkan / Disahkan*) yang dihitung dari rekapnya |
 | `aktivitas` | Riwayat aktivitas (hanya bertambah) |
 | `pok_unggahan`, `pok_uraian`, `pok_mak`, `pok_item` | Kertas Kerja POK dari FA Detail |
 | Skema `app` | Fungsi bantu & penghitung nomor dokumen (tidak terbuka lewat API) |
 
-Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_pengajuan`, `ubah_status_pengajuan`,
-`buat_spp`, `majukan_tahap_spp`, `sahkan_pengajuan`, `catat_aktivitas`, `jejak_dokumen`, `simpan_referensi`,
-`terapkan_pok`, `pok_aktif`. Fungsi `admin_*` hanya bisa dipanggil API server (service role).
+Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_pengajuan`, `buat_rekap_pencairan`,
+`batal_rekap_pencairan`, `buat_rekap_pengesahan`, `batal_rekap_pengesahan`, `catat_aktivitas`, `jejak_dokumen`,
+`simpan_referensi`, `terapkan_pok`, `pok_aktif`. Fungsi `admin_*` hanya bisa dipanggil API server (service role).
 
 > **Security Advisor** Supabase menampilkan peringatan *"Signed-In Users Can Execute SECURITY DEFINER Function"* untuk fungsi RPC di atas.
 > Ini disengaja: fungsi-fungsi itulah satu-satunya jalan mengubah data, dan setiap fungsi memeriksa peran & status di dalamnya.
@@ -163,7 +206,8 @@ Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_p
 
 1. Buat project baru di Supabase.
 2. Buka **SQL Editor**, jalankan berurutan isi file: `supabase/migrations/20261018210500_belanjaku_skema.sql`,
-   `supabase/seed/01_referensi.sql`, lalu `supabase/seed/02_pok_oktober_2026.sql`.
+   `supabase/migrations/20261019090000_alur_rekap_pencairan.sql`, `supabase/seed/01_referensi.sql`,
+   lalu `supabase/seed/02_pok_oktober_2026.sql`.
 3. Ikuti *Langkah pertama* di atas, lalu isi variabel lingkungan dengan URL & kunci project baru.
 
 `supabase/rollback/20261018210500_belanjaku_skema_down.sql` menghapus seluruh skema **beserta semua datanya** — hanya untuk uji coba.
@@ -183,6 +227,7 @@ belanjaku-pip/
 │   ├── Login.tsx           # halaman masuk (Supabase Auth)
 │   ├── GantiSandi.tsx      # ganti kata sandi sendiri
 │   ├── StoreProvider.tsx   # sesi, data dari Supabase, realtime, aksi (RPC), hak akses, toast
+│   ├── RekapBelanja.tsx    # daftar berceklist + riwayat rekap (dipakai Pencairan & Pengesahan)
 │   ├── Combobox.tsx, CetakKegiatan.tsx, UnggahFaDetail.tsx, KolomKegiatan.tsx, Icon.tsx, Logo.tsx, ui.tsx
 │   └── modules/            # satu file per modul
 ├── lib/
@@ -212,3 +257,6 @@ belanjaku-pip/
 | *"Server belum dikonfigurasi: isi SUPABASE_SECRET_KEY…"* saat menambah pengguna | Isi `SUPABASE_SECRET_KEY` (lalu jalankan ulang / Redeploy). |
 | *"Akun ini nonaktif"* | Akun dinonaktifkan Administrator; aktifkan lagi di modul Pengguna. |
 | Data tidak muncul setelah upload FA Detail | Pastikan file `.xlsx` hasil SAKTI *FA Detail 16 Segmen* dan hasil validasi tidak berisi galat. |
+| *"Database belum diperbarui ke versi aplikasi ini"* | Migrasi terbaru belum dijalankan di Supabase. Jalankan file migrasi yang belum ada (urut nama file) di SQL Editor. |
+| Tombol **Cairkan / Sahkan** tidak muncul | Peran Anda hanya melihat. Rekap dilakukan Operator Keuangan atau Bendahara Pengeluaran. |
+| *"Satu rekap … hanya untuk satu sumber dana"* | Pilih belanja dari satu tab saja (RM atau BLU). |

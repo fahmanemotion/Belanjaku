@@ -1,18 +1,19 @@
 export type SumberDana = "RM" | "BLU" | "HBH";
 
-/** Status pengajuan di modul Belanja */
-export type StatusBelanja = "Draf" | "Diajukan" | "Diverifikasi" | "Disetujui" | "Ditolak";
+/**
+ * Status dokumen belanja — diturunkan dari rekap di database:
+ * dicatat pengadaan → masuk rekap pencairan → masuk rekap pengesahan.
+ */
+export type StatusBelanja = "Belum dicairkan" | "Dicairkan" | "Disahkan";
 
 export type JenisDokumen = "Kwitansi" | "Kontrak" | "Honorarium" | "Gaji" | "Perjadin";
 
-export type JenisSpp = "LS" | "GU" | "TUP";
-
-/** 1 = SPP, 2 = Verifikasi PPSPM, 3 = SPM, 4 = SP2D terbit */
-export type TahapPencairan = 1 | 2 | 3 | 4;
+/** Mekanisme pembayaran pada rekap pencairan */
+export type JenisPencairan = "LS" | "GU" | "TUP";
 
 /**
- * Satu kegiatan belanja yang mengalir lintas modul:
- * Belanja (pengajuan & persetujuan) → Pencairan (SPP s.d. SP2D) → Pengesahan.
+ * Satu dokumen belanja yang mengalir lintas modul:
+ * Belanja (dicatat bagian pengadaan) → Pencairan (rekap keuangan) → Pengesahan (rekap pengesahan).
  * Semua tabel kegiatan (Dashboard, Belanja, Pencairan, Pengesahan) membaca data ini.
  */
 export interface Kegiatan {
@@ -31,15 +32,39 @@ export interface Kegiatan {
   akun: string;
   unit: string;
   nilai: number;
-  /** tanggal dokumen / pengajuan (YYYY-MM-DD) */
+  /** tanggal dokumen (YYYY-MM-DD) */
   tanggal: string;
   status: StatusBelanja;
-  /** terisi setelah SPP dibuat di modul Pencairan */
-  spp?: { no: string; jenis: JenisSpp; tahap: TahapPencairan; tanggal: string };
-  /** terisi setelah disahkan di modul Pengesahan */
-  disahkan?: { nomor: string; tanggal: string };
-  /** id pengguna yang membuat pengajuan — hanya dia yang boleh mengubah / menghapus */
+  /** terisi setelah masuk rekap pencairan */
+  pencairan?: { nomor: string; tanggal: string; jenis: JenisPencairan };
+  /** terisi setelah masuk rekap pengesahan */
+  pengesahan?: { nomor: string; tanggal: string };
+  /** id pengguna pencatat dokumen — hanya dia yang boleh mengubah / menghapus selama belum dicairkan */
   dibuatOleh: string;
+}
+
+/* ---------- Rekap pencairan & pengesahan ---------- */
+
+export type JenisRekap = "pencairan" | "pengesahan";
+
+/** Satu rekap: kumpulan belanja satu sumber dana yang dicairkan / disahkan sekaligus */
+export interface Rekap {
+  /** CAIR-2026-0001 atau SAH-2026-0001 */
+  nomor: string;
+  jenisRekap: JenisRekap;
+  /** tanggal pencairan / pengesahan (YYYY-MM-DD) */
+  tanggal: string;
+  dana: SumberDana;
+  /** khusus rekap pencairan */
+  jenisBayar?: JenisPencairan;
+  /** nomor dokumen di SAKTI, mis. SP2D / SPM / SP3B */
+  referensi?: string;
+  catatan?: string;
+  jumlah: number;
+  total: number;
+  dibuatOleh: string;
+  /** waktu lokal ISO tanpa zona */
+  dibuatPada: string;
 }
 
 /* ---------- Riwayat aktivitas (jejak audit) ---------- */
@@ -74,7 +99,7 @@ export interface Aktivitas {
   oleh: string;
   jenis: JenisAktivitas;
   modul: ModulAktivitas;
-  /** kalimat kerja huruf kecil, mis. "mengajukan ke PPK" */
+  /** kalimat kerja huruf kecil, mis. "mencatat dokumen belanja" */
   aksi: string;
   /** id dokumen/objek, mis. BLJ-2026-0417 atau id pengguna */
   objekId?: string;
@@ -84,24 +109,14 @@ export interface Aktivitas {
   catatan?: string;
 }
 
-/** Rekap pengesahan per periode: outstanding = pencairan − pengesahan */
-export interface Sp3bBlu {
-  nomor: string;
-  periode: string;
-  /** "2026-10" */
-  bulan: string;
-  pencairan: number;
-  pengesahan: number;
-}
-
-export type Peran = "Administrator" | "PPK" | "PPSPM" | "Bendahara Pengeluaran" | "Operator Unit";
+export type Peran = "Administrator" | "Operator Pengadaan" | "Operator Keuangan" | "Bendahara Pengeluaran" | "PPK" | "PPSPM";
 
 export interface Pengguna {
   id: string;
   nama: string;
   email: string;
   peran: Peran;
-  /** kosong untuk peran di luar Operator Unit yang tidak terikat unit */
+  /** unit kerja asal pengguna (boleh kosong: tidak terikat unit) */
   unit: string;
   aktif: boolean;
   /** profil akun yang sudah dihapus (tetap disimpan agar riwayat terbaca) */
