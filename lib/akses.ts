@@ -5,11 +5,12 @@
  * Ubah tabel AKSES di bawah bila pembagian tugas di PIP Makassar berbeda.
  *
  * Alur dokumen & pelakunya:
- *   Operator Pengadaan : mencatat dokumen belanja untuk unit kerja mana pun   (→ Belum dicairkan)
- *   Operator Keuangan  : mencentang belanja → rekap pencairan                 (→ Dicairkan)
- *   & Bendahara          mencentang belanja yang sudah dicairkan → rekap pengesahan (→ Disahkan)
- *   PPK, PPSPM         : memantau dokumen, pencairan, dan pengesahan
- *   Administrator      : kelola pengguna & referensi, boleh mencatat belanja
+ *   Operator Pengadaan  : mencatat dokumen belanja untuk unit kerja mana pun            (→ Belum dicairkan)
+ *   Operator Keuangan   : mencentang belanja di Daftar Pencairan → Cairkan             (→ Dicairkan)
+ *   Operator Pengesahan : mencentang belanja yang sudah dicairkan → Sahkan             (→ Disahkan)
+ *   Bendahara Pengeluaran: boleh mencairkan dan mengesahkan
+ *   PPK, PPSPM          : memantau dokumen, pencairan, dan pengesahan
+ *   Administrator       : kelola pengguna & referensi; boleh mencatat, mencairkan, dan mengesahkan
  *
  * Login memakai Supabase Auth. Izin aksi yang SAMA juga tersimpan di database (tabel izin_peran)
  * dan diperiksa oleh Row Level Security serta fungsi RPC — tampilan hanya mengikuti.
@@ -47,8 +48,17 @@ interface AturanPeran {
 export const AKSES: Record<Peran, AturanPeran> = {
   Administrator: {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi", "pengguna"],
-    izin: ["belanja.buat", "belanja.lihatSemua", "aktivitas.semua", "referensi.kelola", "pengguna.kelola", "pok.unggah"],
-    tugas: "Kelola pengguna & referensi, unggah FA Detail",
+    izin: [
+      "belanja.buat",
+      "belanja.lihatSemua",
+      "pencairan.rekap",
+      "pengesahan.sahkan",
+      "aktivitas.semua",
+      "referensi.kelola",
+      "pengguna.kelola",
+      "pok.unggah",
+    ],
+    tugas: "Kelola pengguna & referensi; boleh mencatat, mencairkan, dan mengesahkan",
   },
   "Operator Pengadaan": {
     modul: ["dashboard", "belanja", "aktivitas", "referensi"],
@@ -57,13 +67,18 @@ export const AKSES: Record<Peran, AturanPeran> = {
   },
   "Operator Keuangan": {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
-    izin: ["belanja.lihatSemua", "pencairan.rekap", "pengesahan.sahkan", "aktivitas.semua"],
-    tugas: "Rekap pencairan dan pengesahan belanja",
+    izin: ["belanja.lihatSemua", "pencairan.rekap", "aktivitas.semua"],
+    tugas: "Centang belanja lalu cairkan (bayar ke penyedia / pihak ketiga)",
+  },
+  "Operator Pengesahan": {
+    modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
+    izin: ["belanja.lihatSemua", "pengesahan.sahkan", "aktivitas.semua"],
+    tugas: "Centang belanja yang sudah dicairkan lalu sahkan",
   },
   "Bendahara Pengeluaran": {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],
     izin: ["belanja.lihatSemua", "pencairan.rekap", "pengesahan.sahkan", "aktivitas.semua"],
-    tugas: "Rekap pencairan dan pengesahan belanja",
+    tugas: "Mencairkan dan mengesahkan belanja",
   },
   PPK: {
     modul: ["dashboard", "belanja", "aktivitas", "pencairan", "pengesahan", "referensi"],

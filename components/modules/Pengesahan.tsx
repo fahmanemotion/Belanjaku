@@ -2,9 +2,9 @@
 
 /**
  * Modul Pengesahan
- * - Daftar Belanja: belanja yang sudah masuk rekap pencairan tetapi belum disahkan (berceklist).
- *   Operator Keuangan / Bendahara mencentang belanja lalu klik "Sahkan" → satu rekap pengesahan.
- * - Riwayat       : rekap pengesahan beserta detail belanjanya.
+ * - Daftar : kegiatan yang sudah dicairkan tetapi belum disahkan (ceklist).
+ *            Operator Pengesahan (juga Bendahara Pengeluaran / Administrator) mencentang kegiatan lalu klik "Sahkan".
+ * - Riwayat: histori kegiatan yang sudah disahkan (per kegiatan atau per rekap).
  * Tampilan & aturan bersama ada di components/RekapBelanja.tsx.
  */
 import RekapBelanja from "@/components/RekapBelanja";

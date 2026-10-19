@@ -109,7 +109,14 @@ export interface Aktivitas {
   catatan?: string;
 }
 
-export type Peran = "Administrator" | "Operator Pengadaan" | "Operator Keuangan" | "Bendahara Pengeluaran" | "PPK" | "PPSPM";
+export type Peran =
+  | "Administrator"
+  | "Operator Pengadaan"
+  | "Operator Keuangan"
+  | "Operator Pengesahan"
+  | "Bendahara Pengeluaran"
+  | "PPK"
+  | "PPSPM";
 
 export interface Pengguna {
   id: string;

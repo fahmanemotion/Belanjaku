@@ -2,10 +2,11 @@
 
 /**
  * Modul Pencairan
- * - Daftar Belanja: dokumen belanja dari bagian pengadaan yang belum dicairkan (berceklist).
- *   Operator Keuangan / Bendahara mencentang belanja lalu klik "Cairkan" → satu rekap pencairan.
- * - Riwayat       : rekap pencairan beserta detail belanjanya. Belanja yang sudah dicairkan
- *   otomatis masuk Daftar Belanja di modul Pengesahan.
+ * - Daftar : kegiatan dari bagian pengadaan yang belum dicairkan (ceklist).
+ *            Operator Keuangan (juga Bendahara Pengeluaran / Administrator) mencentang kegiatan yang
+ *            dibayarkan ke penyedia / pihak ketiga lalu klik "Cairkan".
+ * - Riwayat: histori kegiatan yang sudah dicairkan (per kegiatan atau per rekap). Kegiatan yang sudah
+ *            dicairkan otomatis masuk Daftar di modul Pengesahan.
  * Tampilan & aturan bersama ada di components/RekapBelanja.tsx.
  */
 import RekapBelanja from "@/components/RekapBelanja";

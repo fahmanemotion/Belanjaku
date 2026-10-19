@@ -303,7 +303,7 @@ export const JENIS_DOKUMEN: {
 
 export const infoJenisDokumen = (j: JenisDokumen) => JENIS_DOKUMEN.find((x) => x.value === j) ?? JENIS_DOKUMEN[0];
 
-export const PERAN: Peran[] = ["Administrator", "Operator Pengadaan", "Operator Keuangan", "Bendahara Pengeluaran", "PPK", "PPSPM"];
+export const PERAN: Peran[] = ["Administrator", "Operator Pengadaan", "Operator Keuangan", "Operator Pengesahan", "Bendahara Pengeluaran", "PPK", "PPSPM"];
 
 /** Urutan status dokumen belanja: dicatat pengadaan → dicairkan → disahkan */
 export const STATUS_BELANJA: StatusBelanja[] = ["Belum dicairkan", "Dicairkan", "Disahkan"];

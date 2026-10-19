@@ -10,11 +10,12 @@ import { PERAN } from "@/lib/data";
 import { inisial } from "@/lib/format";
 import type { Peran } from "@/lib/types";
 
-/** Warna badge per peran: admin biru, pengadaan netral, keuangan hijau, pejabat pemantau kuning */
+/** Warna badge per peran: admin biru, pengadaan netral, keuangan hijau, pengesahan ungu, pejabat pemantau kuning */
 const TONE_PERAN: Record<Peran, Tone> = {
   Administrator: "i",
   "Operator Pengadaan": "",
   "Operator Keuangan": "g",
+  "Operator Pengesahan": "p",
   "Bendahara Pengeluaran": "g",
   PPK: "w",
   PPSPM: "w",

@@ -14,23 +14,29 @@ Aplikasi pengelolaan belanja Politeknik Ilmu Pelayaran Makassar (Satker 287494).
 ## Alur dokumen
 
 ```
-Belanja (bagian pengadaan)        Pencairan (keuangan)                 Pengesahan (keuangan)
-catat dokumen belanja      ──▶    centang belanja → Cairkan     ──▶    centang belanja → Sahkan
-status: Belum dicairkan           rekap CAIR-2026-0001                 rekap SAH-2026-0001
-                                  status: Dicairkan                    status: Disahkan
+Belanja                         Pencairan                            Pengesahan
+(Operator Pengadaan)            (Operator Keuangan)                  (Operator Pengesahan)
+catat kegiatan          ──▶     Daftar: centang → Cairkan     ──▶    Daftar: centang → Sahkan
+                                Riwayat Pencairan                    Riwayat Pengesahan
+status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: Disahkan (SAH-2026-…)
 ```
 
 1. **Belanja** — bagian pengadaan barang/jasa mencatat semua dokumen belanja kebutuhan unit kerja di satu tempat
    (boleh beberapa operator sekaligus, untuk unit kerja mana pun). Dokumen yang tersimpan **langsung masuk Daftar Pencairan**.
    Dokumen hanya bisa diubah / dihapus oleh **pencatatnya** dan hanya **selama belum dicairkan**.
-2. **Pencairan** — Operator Keuangan / Bendahara membuka *Daftar Belanja*, memilih tab **RM** atau **BLU**, **mencentang**
-   belanja yang dibayarkan ke penyedia/pihak ketiga, lalu klik **Cairkan** (isi tanggal, jenis pembayaran LS/GU/TUP,
-   No. SP2D/SPM bila ada). Belanja terpilih menjadi satu **rekap pencairan**, hilang dari daftar, dan pindah ke detail
-   rekap di **Riwayat**.
-3. **Pengesahan** — belanja yang sudah dicairkan otomatis muncul di *Daftar Belanja* modul Pengesahan. Centang lalu klik
-   **Sahkan** → satu **rekap pengesahan** di Riwayat Pengesahan. Tanggal pengesahan tidak boleh sebelum tanggal pencairan.
+2. **Pencairan** — Operator Keuangan membuka **Daftar** Pencairan, **mencentang** kegiatan yang dibayarkan ke
+   penyedia/pihak ketiga (kotak centang per baris, centang satu halaman, atau *Pilih semua*; jumlah & total tampil di
+   bar ceklist bawah), lalu klik **Cairkan** (isi tanggal, jenis pembayaran LS/GU/TUP, No. SP2D/SPM bila ada).
+   Kegiatan terpilih hilang dari Daftar, pindah ke **Riwayat Pencairan** sebagai histori kegiatan yang dibayarkan,
+   dan otomatis masuk Daftar Pengesahan.
+3. **Pengesahan** — Operator Pengesahan membuka **Daftar** Pengesahan (berisi kegiatan yang sudah dicairkan), mencentang
+   kegiatan yang disahkan, lalu klik **Sahkan**. Kegiatan pindah ke **Riwayat Pengesahan**. Tanggal pengesahan tidak boleh
+   sebelum tanggal pencairan.
 
-- **Satu rekap = satu sumber dana** (RM saja atau BLU saja).
+- Bendahara Pengeluaran dan Administrator boleh mencairkan maupun mengesahkan.
+- Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**. Daftar punya tab
+  **Semua / RM / BLU**; bila yang dicentang campuran RM dan BLU, aplikasi otomatis membuat satu rekap untuk setiap sumber dana.
+- **Riwayat** menampilkan histori **per kegiatan** (bawaan) atau **per rekap** (beserta detail kegiatannya).
 - Rekap yang keliru bisa **dibatalkan** dari Riwayat (wajib alasan); belanjanya kembali ke daftar dan nomor rekap
   tidak dipakai lagi. Rekap pencairan tidak bisa dibatalkan bila sebagian belanjanya sudah disahkan — batalkan rekap
   pengesahannya dulu.
@@ -53,7 +59,7 @@ status: Belum dicairkan           rekap CAIR-2026-0001                 rekap SAH
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan, peran baru; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan; **jalankan sekali** lewat SQL Editor (lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -67,8 +73,10 @@ barunya di-push:
 3. Berhasil bila tertulis *Success. No rows returned*. Bila gagal, tidak ada yang berubah (seluruh isi file berjalan
    dalam satu transaksi) — baca pesan galatnya.
 
-`20261019090000_alur_rekap_pencairan.sql` mengubah peran **Operator Unit → Operator Pengadaan**, mengganti tabel alur lama
-(`spp`, `sp3b`, `pengesahan`) dengan `rekap_pencairan` & `rekap_pengesahan`, dan berhenti sendiri bila tabel alur lama sudah berisi data.
+- `20261019090000_alur_rekap_pencairan.sql` mengubah peran **Operator Unit → Operator Pengadaan**, mengganti tabel alur lama
+  (`spp`, `sp3b`, `pengesahan`) dengan `rekap_pencairan` & `rekap_pengesahan`, dan berhenti sendiri bila tabel alur lama sudah berisi data.
+- `20261019103000_peran_operator_pengesahan.sql` menambah peran **Operator Pengesahan**, menjadikan Operator Keuangan khusus
+  pencairan, dan memberi Administrator izin mencairkan & mengesahkan.
 
 ### Langkah pertama (sekali saja, di dashboard Supabase)
 
@@ -127,10 +135,11 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 | Peran | Modul yang terbuka | Yang bisa dilakukan |
 |---|---|---|
 | Operator Pengadaan | Dashboard, Belanja, Aktivitas, Referensi | Catat dokumen belanja untuk **unit kerja mana pun**; ubah & hapus dokumen catatannya sendiri selama belum dicairkan; **upload FA Detail**; melihat aktivitas semua dokumen belanja |
-| Operator Keuangan | Semua kecuali Pengguna | **Rekap pencairan** dan **rekap pengesahan** (centang belanja), batalkan rekap |
-| Bendahara Pengeluaran | Semua kecuali Pengguna | Sama dengan Operator Keuangan |
+| Operator Keuangan | Semua kecuali Pengguna | **Pencairan**: centang kegiatan → Cairkan; batalkan rekap pencairan |
+| Operator Pengesahan | Semua kecuali Pengguna | **Pengesahan**: centang kegiatan yang sudah dicairkan → Sahkan; batalkan rekap pengesahan |
+| Bendahara Pengeluaran | Semua kecuali Pengguna | Pencairan **dan** pengesahan |
 | PPK, PPSPM | Semua kecuali Pengguna | Memantau dokumen belanja, pencairan, pengesahan, dan riwayat aktivitas (hanya melihat) |
-| Administrator | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, **upload FA Detail**; melihat pencairan & pengesahan |
+| Administrator | Semua modul | Kelola pengguna & referensi, catat dokumen belanja, pencairan **dan** pengesahan, **upload FA Detail** |
 
 - Aturan tampilan ada di **`lib/akses.ts`** (tabel `AKSES`); aturan yang sama tersimpan di database (tabel **`izin_peran`**)
   dan dipakai RLS serta fungsi RPC. Bila pembagian tugas berubah, ubah **keduanya**.
@@ -146,8 +155,8 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
 | `/belanja`    | Catat dokumen belanja (bagian pengadaan); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
 | `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak dokumen (BLJ-…) atau rekap (CAIR-… / SAH-…); ekspor CSV |
-| `/pencairan`  | **Daftar Belanja** berceklist (tab RM / BLU) → **Cairkan** menjadi rekap pencairan; **Riwayat** rekap beserta detail belanja dan status pengesahannya; batal rekap |
-| `/pengesahan` | **Daftar Belanja** yang sudah dicairkan (berceklist) → **Sahkan** menjadi rekap pengesahan; **Riwayat** rekap beserta detail belanja; batal rekap |
+| `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** per kegiatan (No. rekap, SP2D, status pengesahan) atau per rekap; batal rekap |
+| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan**; **Riwayat Pengesahan** per kegiatan atau per rekap; batal rekap |
 | `/referensi`  | Akun belanja, unit kerja, penyedia, sumber dana (tambah & ubah oleh Administrator) |
 | `/pengguna`   | Kelola pengguna, peran, status, atur ulang kata sandi (khusus Administrator) |
 
@@ -206,7 +215,8 @@ Fungsi RPC yang dipanggil aplikasi: `buat_pengajuan`, `ubah_pengajuan`, `hapus_p
 
 1. Buat project baru di Supabase.
 2. Buka **SQL Editor**, jalankan berurutan isi file: `supabase/migrations/20261018210500_belanjaku_skema.sql`,
-   `supabase/migrations/20261019090000_alur_rekap_pencairan.sql`, `supabase/seed/01_referensi.sql`,
+   `supabase/migrations/20261019090000_alur_rekap_pencairan.sql`, `supabase/migrations/20261019103000_peran_operator_pengesahan.sql`,
+   `supabase/seed/01_referensi.sql`,
    lalu `supabase/seed/02_pok_oktober_2026.sql`.
 3. Ikuti *Langkah pertama* di atas, lalu isi variabel lingkungan dengan URL & kunci project baru.
 
@@ -258,5 +268,5 @@ belanjaku-pip/
 | *"Akun ini nonaktif"* | Akun dinonaktifkan Administrator; aktifkan lagi di modul Pengguna. |
 | Data tidak muncul setelah upload FA Detail | Pastikan file `.xlsx` hasil SAKTI *FA Detail 16 Segmen* dan hasil validasi tidak berisi galat. |
 | *"Database belum diperbarui ke versi aplikasi ini"* | Migrasi terbaru belum dijalankan di Supabase. Jalankan file migrasi yang belum ada (urut nama file) di SQL Editor. |
-| Tombol **Cairkan / Sahkan** tidak muncul | Peran Anda hanya melihat. Rekap dilakukan Operator Keuangan atau Bendahara Pengeluaran. |
-| *"Satu rekap … hanya untuk satu sumber dana"* | Pilih belanja dari satu tab saja (RM atau BLU). |
+| Kotak centang / tombol **Cairkan** tidak muncul | Peran Anda hanya melihat. Pencairan: Operator Keuangan, Bendahara Pengeluaran, Administrator. |
+| Kotak centang / tombol **Sahkan** tidak muncul | Pengesahan: Operator Pengesahan, Bendahara Pengeluaran, Administrator. |

@@ -1092,6 +1092,17 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .rekap-kosong > svg { width: 30px; height: 30px; color: var(--accent); }
 .rekap-kosong b { font-size: 15px; }
 .rekap-kosong p { margin: 0; max-width: 460px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.doc-chip.rapat { margin-left: 0; }
+.info-rekap-ref { font-family: var(--f-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* Form cairkan/sahkan: satu blok isian per sumber dana bila kegiatan terpilih campuran RM & BLU */
+.grup-rekap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
+.grup-rekap h4 { grid-column: 1 / -1; margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.ringkas > .ringkas-grup { display: grid; gap: 7px; justify-content: stretch; align-items: stretch; }
+.ringkas-grup > div { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; font-size: 13px; color: var(--ink); }
+.ringkas-grup > div span { color: var(--muted); }
+.ringkas-grup > .ringkas-kepala { padding-bottom: 5px; border-bottom: 1px dashed var(--line); font-weight: 700; }
+.ringkas-grup > .ringkas-kepala span { color: var(--ink); }
+.ringkas-grup + .ringkas-grup { margin-top: 6px; }
 @media (min-width: 768px) {
   /* nama unit kerja panjang: dropdown filter dibatasi agar kolom cari tetap lega */
   .filter-kegiatan .sel.saring { max-width: 220px; }
@@ -1100,6 +1111,8 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 @media (max-width: 767px) {
   .filter-kegiatan .tabs { flex: 1 1 100%; }
   .filter-kegiatan .tabs button { flex: 1; }
+  .filter-kegiatan .seg.seg-sm { flex: 1 1 100%; grid-auto-columns: 1fr; }
+  .grup-rekap { grid-template-columns: minmax(0, 1fr); }
   .rekap-kepala { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; padding: 14px; }
   .rk-nomor { grid-column: 1 / -1; padding-right: 44px; }
   .rk-badge, .rk-status { grid-column: 1 / -1; }
