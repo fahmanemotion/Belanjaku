@@ -74,6 +74,19 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
     (di baris terakhir yang sudah terisi menambah baris baru); panah pindah sel; `Alt/⌥+Enter` (atau `Shift+Enter`) menambah baris
     spesifikasi; `Enter` di baris spesifikasi kosong mengakhiri daftar spesifikasi; `Backspace` di baris spesifikasi kosong menghapusnya;
     `F2` menyunting isi sel; `Esc` keluar dari sel. Tombol **+** / tempat sampah di ujung baris menambah spesifikasi / menghapus baris.
+  - **Blok sel seperti Excel** (tabel HPS, harga Nota Pembelian, dan lampiran Surat Pesanan / Kwitansi): seret mouse dari sel ke sel,
+    `Shift`+klik, atau `Shift`+panah untuk memblok beberapa baris dan kolom; klik **nomor baris** untuk baris penuh (seret untuk
+    beberapa baris), klik **judul kolom** untuk kolom penuh (`Shift`+klik judul lain menambah kolom), klik judul **No.** atau
+    `Ctrl/⌘+A` untuk semua sel. Blok disorot oranye beserta judul kolom & nomor barisnya; menyeret ke tepi bingkai tabel menggulir
+    tabel dengan sendirinya.
+    - `Ctrl/⌘+C` menyalin blok sebagai sel-sel Excel (angka tanpa titik ribuan, spesifikasi sebagai baris "- …") dan menandainya
+      dengan garis putus-putus (`Esc` menghapus tanda itu); `Ctrl/⌘+X` memotong; `Delete` / `Backspace` mengosongkan semua sel blok.
+    - `Ctrl/⌘+V` menempel salinan Excel mulai **sel kiri-atas blok**, sel per sel seperti di Excel, lalu sel hasil tempel menjadi blok
+      terpilih. Satu nilai yang ditempel ke blok mengisi semua selnya (mis. satuan "unit" untuk 10 baris sekaligus), satu baris
+      salinan diulang ke tiap baris blok, dan blok semua sel + tempel = seluruh daftar diganti. Kolom No. dan Total Jumlah terisi
+      otomatis.
+    - Klik sekali memilih sel (ketikan mengganti isinya), klik dua kali atau `F2` menyunting isinya; mengetik saat ada blok mengisi sel
+      aktif dan blok kembali satu sel. Di HP/tablet sel cukup diketuk seperti biasa.
   - **Tempel dari catatan Excel / draft RAB / Google Sheets.** Blok baris-baris barang di Excel — boleh ikut judul dokumen, judul
     kolom, baris kelompok, subtotal, PPN, total, terbilang, dan tanda tangan — salin, lalu tempel (`Ctrl/⌘+V`) di sel mana pun di
     tabel atau klik **Tempel dari Excel** (`lib/tempelExcel.ts`):
@@ -87,11 +100,12 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
       spesifikasinya; isi kolom Spesifikasi dan sel berbaris banyak juga dipecah menjadi baris spesifikasi;
     - angka "Rp1.500.000,-", "1,500,000.00", dan volume bersatuan "10 pcs" / "5 org x 2 hr" terbaca; harga satuan dihitung dari
       total ÷ jumlah bila kolom harga satuan tidak ada; salinan yang memuat baris PPN mencentang PPN 11%;
-    - hasilnya langsung masuk mulai baris yang dipilih (seperti tempel di Excel; isian yang tidak dimuat salinan tetap); bila kursor
-      tidak di sel mana pun, ditambahkan di bawah barang yang ada. **Bilah hasil** di atas tabel menyebut kolom yang dikenali dan
-      baris yang dilewati, dengan tombol **Atur kolom & baris…** (ubah arti tiap kolom, jenis tiap baris — barang / spesifikasi /
-      lewati — dan cara memasukkan: tambahkan di bawah, timpa mulai baris tertentu, atau ganti semua) dan **Urungkan**. Salinan
-      yang belum meyakinkan (mis. tanpa kolom angka) langsung membuka dialog itu; barang hasil tempel yang belum lengkap ditandai merah;
+    - hasilnya langsung masuk mulai sel kiri-atas blok yang dipilih (seperti tempel di Excel; isian yang tidak dimuat salinan tetap);
+      bila kursor tidak di sel mana pun, ditambahkan di bawah barang yang ada. Salinan yang susunan kolomnya sama cukup ditandai blok
+      hasil tempel; bila kolom dikenali dari judul/isinya, ada baris yang dilewati, atau ada catatan, **bilah hasil** di atas tabel
+      menyebutnya, dengan tombol **Atur kolom & baris…** (ubah arti tiap kolom, jenis tiap baris — barang / spesifikasi / lewati —
+      dan cara memasukkan: tambahkan di bawah, timpa mulai baris tertentu, atau ganti semua) dan **Urungkan**. Salinan yang belum
+      meyakinkan (mis. tanpa kolom angka) langsung membuka dialog itu; barang hasil tempel yang belum lengkap ditandai merah;
     - satu kolom saja (mis. kolom Jumlah atau Harga) bisa ditempel ke beberapa baris sekaligus.
   - **Urungkan / ulangi** seperti Excel: `Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z` atau `Ctrl+Y`, atau tombol panah di atas tabel.
   - **Salin ke Excel** menyalin tabel (judul kolom, spesifikasi, JUMLAH/PPN/TOTAL) untuk ditempel di Excel — juga ada di lampiran
@@ -358,7 +372,7 @@ belanjaku-pip/
 │   ├── RekapBelanja.tsx    # daftar berceklist + riwayat rekap (dipakai Pencairan & Pengesahan)
 │   ├── CetakPengadaan.tsx  # 10 dokumen pengadaan A4 (format berkas Excel NODIN_KWITANSI)
 │   ├── InputNomor.tsx      # isian nomor dokumen berpola (PL.102/…)
-│   ├── TabelBarang.tsx     # tabel barang/jasa bergaya Excel di form pengadaan (keyboard, tempel, urungkan, salin)
+│   ├── TabelBarang.tsx     # tabel barang/jasa bergaya Excel di form pengadaan (blok sel, keyboard, salin/tempel, urungkan)
 │   ├── TempelExcel.tsx     # bilah hasil tempel & dialog atur kolom/baris salinan Excel
 │   ├── Combobox.tsx, CetakKegiatan.tsx, UnggahFaDetail.tsx, KolomKegiatan.tsx, Icon.tsx, Logo.tsx, ui.tsx
 │   └── modules/            # satu file per modul
@@ -401,6 +415,7 @@ belanjaku-pip/
 | Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default** (bukan *Minimum*/*Kustom*). Chrome & Edge tidak mencetak tanggal/URL bila margin Default; di Safari / Firefox matikan **Header dan footer**. |
 | NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
 | Daftar dari Excel masuk ke kolom yang salah saat ditempel | Klik **Atur kolom & baris…** di bilah hasil tempel, pilih arti kolom yang benar (atau ubah jenis baris), lalu **Masukkan** — atau **Urungkan** (`Ctrl/⌘+Z`). Ikut menyalin baris judul kolom (Uraian, Volume, Satuan, Harga Satuan, Jumlah) membuat pengenalan otomatis paling tepat. |
+| Seret mouse di tabel malah memilih teks, bukan memblok sel | Sel itu sedang disunting (kursor di dalam teks). Tekan `Esc` / `Enter` atau klik sel lain dulu, lalu seret. Blok sel memakai mouse/trackpad; di HP sel cukup diketuk. |
 | Tombol **Tempel dari Excel** tidak membaca salinan | Browser meminta izin membaca clipboard — pilih **Izinkan**. Bila izin ditolak, klik sel Uraian di tabel lalu tekan `⌘V` / `Ctrl+V`. |
 | Form pengadaan tidak tertutup saat menekan Esc | Disengaja: setelah ada isian, Esc / klik di luar tidak menutup form agar daftar barang tidak hilang. Tutup lewat **Batal** atau **×**. |
 | Kop surat / logo tidak tampil atau tampil sebagai ikon rusak | Sejak v23 gambar tertanam di `lib/gambarDokumen.ts`. Pastikan file itu ikut ter-push dan deploy Vercel terbaru sudah selesai, lalu muat ulang halaman (⌘⇧R). |

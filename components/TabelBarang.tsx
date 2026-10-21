@@ -9,14 +9,30 @@
  *  - TabelBeli     : harga satuan pembelian per barang di form Nota Pembelian.
  *  - TabelLampiran : tampilan tanpa isian di form Surat Pesanan dan Kwitansi, BAP & BAST.
  *
- * Seperti Excel: Tab/Shift+Tab pindah kolom, Enter turun ke baris berikutnya (di baris terakhir menambah baris baru),
- * panah pindah sel, Alt/⌥+Enter menambah baris spesifikasi, F2 menyunting isi sel, Esc keluar dari sel,
- * Ctrl/⌘+Z urungkan, Ctrl/⌘+Shift+Z atau Ctrl+Y ulangi.
- * Tempel dari Excel / Google Sheets (Ctrl/⌘+V): salinan draft dengan susunan kolom apa pun dikenali dari judul kolomnya
- * atau ditebak dari isinya (lib/tempelExcel.ts); hasilnya bisa diatur ulang lewat "Atur kolom & baris…" atau diurungkan.
+ * Seperti Excel:
+ *  - Blok sel: seret mouse, Shift+klik, Shift+panah, klik nomor baris (baris penuh), klik judul kolom (kolom penuh),
+ *    klik judul "No." atau Ctrl/⌘+A (semua sel). Ctrl/⌘+C menyalin blok sebagai sel-sel Excel (bergaris putus-putus),
+ *    Ctrl/⌘+X memotong, Delete mengosongkan, Ctrl/⌘+V menempel mulai sel kiri-atas blok — satu nilai mengisi semua sel blok,
+ *    satu baris diulang ke tiap baris blok, blok semua sel = daftar diganti. Sesudah tempel, sel hasilnya terblok.
+ *  - Klik sekali memilih sel (ketikan mengganti isinya), klik dua kali / F2 menyunting isi sel.
+ *  - Tab/Shift+Tab pindah kolom, Enter turun ke baris berikutnya (di baris terakhir menambah baris baru), panah pindah sel,
+ *    Alt/⌥+Enter menambah baris spesifikasi, Esc keluar dari sel, Ctrl/⌘+Z urungkan, Ctrl/⌘+Shift+Z atau Ctrl+Y ulangi.
+ *  - Salinan draft dengan susunan kolom lain dikenali dari judul kolomnya atau ditebak dari isinya (lib/tempelExcel.ts);
+ *    hasilnya bisa diatur ulang lewat "Atur kolom & baris…" atau diurungkan.
  * Batas sama dengan database (app.rapikan_item_paket): 50 barang/jasa, 20 baris spesifikasi per barang.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type RefObject,
+} from "react";
 import Icon from "./Icon";
 import { BilahTempel, DialogTempel, bacaClipboard, salinTeks, uraianKolom, type IsiBilah, type ModeTempel } from "./TempelExcel";
 import { InputRupiah } from "./ui";
@@ -65,6 +81,10 @@ export interface BarisBarang {
 }
 export type KolomBarang = "uraian" | "jumlah" | "satuan" | "harga" | "ket";
 const KOLOM_BARANG: KolomBarang[] = ["uraian", "jumlah", "satuan", "harga", "ket"];
+/** Nomor kolom tabel HPS (sama dengan URUTAN_TABEL): 0 No · 1 Uraian · 2 Jumlah · 3 Satuan · 4 Harga · 5 Total · 6 Ket */
+const INDEKS_KOLOM: Record<KolomBarang, number> = { uraian: 1, jumlah: 2, satuan: 3, harga: 4, ket: 6 };
+/** Kolom isian menurut nomor kolom (null = No. & Total Jumlah, terisi otomatis) */
+const KOLOM_DI: (KolomBarang | null)[] = [null, "uraian", "jumlah", "satuan", "harga", null, "ket"];
 
 let kunciBaris = 0;
 export const barisKosong = (): BarisBarang => ({ kunci: ++kunciBaris, uraian: "", spek: [], jumlah: "", satuan: "", harga: "", ket: "" });
@@ -80,6 +100,14 @@ export const barisDariItem = (x: ItemPaket): BarisBarang => ({
 /** Baris yang sama sekali kosong tidak ikut disimpan */
 export const barisTerisi = (b: BarisBarang) =>
   Boolean(b.uraian.trim() || b.spek.some((s) => s.trim()) || b.jumlah || b.satuan.trim() || b.harga || b.ket.trim());
+const samaBaris = (x: BarisBarang, y: BarisBarang) =>
+  x.uraian === y.uraian &&
+  x.jumlah === y.jumlah &&
+  x.satuan === y.satuan &&
+  x.harga === y.harga &&
+  x.ket === y.ket &&
+  x.spek.length === y.spek.length &&
+  x.spek.every((s, j) => s === y.spek[j]);
 
 /** Kolom wajib yang belum benar (aturan sama dengan database) */
 export function salahBarang(b: BarisBarang): KolomBarang[] {
@@ -129,6 +157,12 @@ const seluruh = (el: HTMLInputElement) => el.value.length > 0 && el.selectionSta
 const tombolUrung = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "z" && !e.shiftKey;
 const tombolUlang = (e: KeyboardEvent) =>
   (e.ctrlKey || e.metaKey) && !e.altKey && ((e.key.toLowerCase() === "z" && e.shiftKey) || (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "y"));
+const tombolSemua = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "a";
+/** angka dari teks salinan sebagai digit ("" bila bukan angka positif) */
+const digitDari = (teks: string) => {
+  const n = angkaDari(teks);
+  return n !== null && n > 0 ? String(Math.round(n)) : "";
+};
 
 function useFokusSel(ref: RefObject<HTMLTableElement | null>) {
   const tunda = useRef<{ r: number; c: string; pilih: boolean } | null>(null);
@@ -187,6 +221,379 @@ function useRiwayat<T>(sekarang: T, pulihkan: (v: T) => void) {
     bisaUrung: r.current.mundur.length > 0,
     bisaUlang: r.current.maju.length > 0,
   };
+}
+
+/* =====================================================================
+   Blok sel seperti Excel
+   ===================================================================== */
+interface Titik {
+  r: number;
+  c: number;
+}
+export interface Rentang {
+  r1: number;
+  r2: number;
+  c1: number;
+  c2: number;
+}
+/** jangkar `a` (sel aktif, salah satu sudut blok) dan ujung `f` */
+interface Pilihan {
+  a: Titik;
+  f: Titik;
+}
+type ModeBlok = "sel" | "baris" | "kolom";
+const ARAH: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+const jepit = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+const samaTitik = (x: Titik, y: Titik) => x.r === y.r && x.c === y.c;
+const rentangDari = (p: Pilihan): Rentang => ({
+  r1: Math.min(p.a.r, p.f.r),
+  r2: Math.max(p.a.r, p.f.r),
+  c1: Math.min(p.a.c, p.f.c),
+  c2: Math.max(p.a.c, p.f.c),
+});
+const kenaRentang = (g: Rentang, r: number, c1: number, c2: number) => r >= g.r1 && r <= g.r2 && c2 >= g.c1 && c1 <= g.c2;
+/** kelas tepi blok: <awalan>a (atas), b (bawah), ki (kiri), ka (kanan) */
+const tepi = (g: Rentang, r: number, c1: number, c2: number, awalan: string) =>
+  (r === g.r1 ? ` ${awalan}a` : "") + (r === g.r2 ? ` ${awalan}b` : "") + (c1 <= g.c1 ? ` ${awalan}ki` : "") + (c2 >= g.c2 ? ` ${awalan}ka` : "");
+const kutipSel = (t: string) => (/["\t\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
+/** Isi blok → teks bertab untuk clipboard (Excel & Google Sheets menempelkannya kembali sebagai sel-sel) */
+const tsvRentang = (g: Rentang, nilaiSel: (r: number, c: number) => string) =>
+  Array.from({ length: g.r2 - g.r1 + 1 }, (_, i) =>
+    Array.from({ length: g.c2 - g.c1 + 1 }, (_, j) => kutipSel(nilaiSel(g.r1 + i, g.c1 + j))).join("\t"),
+  ).join("\n");
+/** nilai salinan satu sel (tanda kutip & baris baru penutup dari Excel dibuang) */
+const nilaiTunggal = (teks: string) => (bacaSalinan(teks)[0]?.[0] ?? "").trim();
+/** kolom pertama salinan berisi nomor urut (1, 2, 3 …)? */
+const kolomNomor = (data: string[][]) => {
+  const isi = data.map((d) => (d[0] ?? "").trim()).filter(Boolean);
+  return isi.length > 0 && isi.filter((x) => /^\d{1,3}[.)]?$/.test(x)).length >= isi.length * 0.6;
+};
+/** sel isian di dalam sel tabel (kolom nomor tidak punya isian) */
+const isianDi = (td: HTMLElement | null) => (td && !td.dataset.penuh ? td.querySelector<HTMLInputElement>("input[data-r]") : null);
+/** bagian elemen yang benar-benar terlihat (dipotong layar & kotak bergulir di atasnya, mis. isi form) */
+const bagianTerlihat = (el: HTMLElement) => {
+  let { top, bottom, left, right } = el.getBoundingClientRect();
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (s.overflowX === "visible" && s.overflowY === "visible") continue;
+    const q = p.getBoundingClientRect();
+    top = Math.max(top, q.top);
+    bottom = Math.min(bottom, q.bottom);
+    left = Math.max(left, q.left);
+    right = Math.min(right, q.right);
+  }
+  return { top: Math.max(top, 0), bottom: Math.min(bottom, window.innerHeight), left: Math.max(left, 0), right: Math.min(right, window.innerWidth) };
+};
+/** atribut sel tabel untuk blok: baris tampilan & kolom awal/akhir (sel gabungan) */
+const atributSel = (r: number, c1: number, c2?: number) => ({ "data-sr": r, "data-sc": c1, ...(c2 !== undefined ? { "data-sce": c2 } : {}) });
+
+/**
+ * Blok sel seperti Excel. Sel tabel diberi data-sr, data-sc/data-sce dan data-penuh (kolom nomor: klik = baris penuh);
+ * judul kolom diberi data-hc (klik = kolom penuh; judul "No." = semua sel). Sel aktif yang berisian memegang fokus
+ * (ketikan langsung mengganti isinya); sel aktif hanya-baca (No., Total, spesifikasi lampiran) → fokus di tabel.
+ */
+function useBlok(ref: RefObject<HTMLTableElement | null>, jumlahBaris: number, kolomAkhir: number) {
+  const [pilihan, setPilihan] = useState<Pilihan | null>(null);
+  /** pilihan terbaru untuk kejadian beruntun sebelum tabel digambar ulang */
+  const pilihRef = useRef<Pilihan | null>(null);
+  const [fokusTabel, setFokusTabel] = useState(false);
+  /** blok yang baru disalin (bergaris putus-putus seperti Excel) */
+  const [salinan, setSalinan] = useState<Rentang | null>(null);
+  const salinanRef = useRef<Rentang | null>(null);
+  const seret = useRef<{ mode: ModeBlok; a: Titik } | null>(null);
+  const penunjuk = useRef("mouse");
+  const posisi = useRef({ x: 0, y: 0 });
+  const bingkai = useRef<number | null>(null);
+  const fokusNanti = useRef(false);
+  const pilihUlang = useRef(false);
+
+  const sah = (v: Pilihan | null) => (v && v.a.r < jumlahBaris && v.f.r < jumlahBaris ? v : null);
+  const ubah = (v: Pilihan | null) => {
+    pilihRef.current = v;
+    setPilihan(v);
+  };
+  /** pilihan terbaru untuk penangan kejadian (state baru terbaca setelah tabel digambar ulang) */
+  const terkini = () => {
+    const q = sah(pilihRef.current);
+    const g = q ? rentangDari(q) : null;
+    return { pilih: q, rentang: g, banyak: !!g && (g.r1 !== g.r2 || g.c1 !== g.c2) };
+  };
+  const p = sah(pilihan);
+  const rentang = p ? rentangDari(p) : null;
+  const banyak = !!rentang && (rentang.r1 !== rentang.r2 || rentang.c1 !== rentang.c2);
+  const tampil = !!rentang && (banyak || fokusTabel);
+  const tanda = salinan && salinan.r2 < jumlahBaris ? salinan : null;
+
+  const tdDi = (t: Titik) =>
+    Array.from(ref.current?.querySelectorAll<HTMLElement>(`td[data-sr="${t.r}"]`) ?? []).find(
+      (td) => Number(td.dataset.sc) <= t.c && t.c <= Number(td.dataset.sce ?? td.dataset.sc),
+    ) ?? null;
+  const tunjukkan = (t: Titik) => tdDi(t)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  /** fokus ke sel aktif: isiannya (seluruh isi terpilih) atau tabel bila selnya hanya-baca */
+  const fokuskan = (t: Titik) => {
+    const input = isianDi(tdDi(t));
+    if (input) {
+      if (document.activeElement !== input) input.focus({ preventScroll: true });
+      input.select();
+    } else ref.current?.focus({ preventScroll: true });
+  };
+  // blok hasil tempel: sel aktifnya difokuskan setelah tabel digambar ulang. Sesudah urungkan / hapus / isi blok,
+  // isi sel aktif dipilih lagi (mode siap seperti Excel: ketikan mengganti isinya, seret mulai blok baru)
+  useLayoutEffect(() => {
+    const ulang = pilihUlang.current;
+    pilihUlang.current = false;
+    if (fokusNanti.current) {
+      fokusNanti.current = false;
+      const q = sah(pilihRef.current);
+      if (!q) return;
+      fokuskan(q.a);
+      tunjukkan(q.a);
+    } else if (ulang) {
+      const a = document.activeElement;
+      if (a instanceof HTMLInputElement && a.dataset.r !== undefined && ref.current?.contains(a)) a.select();
+    }
+  });
+
+  /** pilih blok a..f (a = sel aktif); `fokus` = pindahkan fokus ke sel aktif setelah tabel digambar ulang */
+  const tetapkan = (a: Titik | null, f?: Titik, fokus = false) => {
+    ubah(a ? { a, f: f ?? a } : null);
+    if (a && fokus) fokusNanti.current = true;
+  };
+  /** blok kembali satu sel (mis. mulai mengetik di sel aktif) */
+  const kumpul = (t: Titik) => {
+    const q = pilihRef.current;
+    if (!q || !samaTitik(q.a, t) || !samaTitik(q.f, t)) ubah({ a: t, f: t });
+  };
+  const semua = () => {
+    if (jumlahBaris) ubah({ a: { r: 0, c: 0 }, f: { r: jumlahBaris - 1, c: kolomAkhir } });
+  };
+  /** Shift+panah: ujung blok bergeser satu sel */
+  const perluas = (dr: number, dc: number, aktif: Titik) => {
+    const q0 = sah(pilihRef.current);
+    const q = q0 && (!samaTitik(q0.a, q0.f) || samaTitik(q0.a, aktif)) ? q0 : { a: aktif, f: aktif };
+    const f = { r: jepit(q.f.r + dr, 0, jumlahBaris - 1), c: jepit(q.f.c + dc, 0, kolomAkhir) };
+    ubah({ a: q.a, f });
+    requestAnimationFrame(() => tunjukkan(f));
+  };
+  /** isi tabel diubah bukan oleh ketikan → isi sel aktif dipilih lagi setelah digambar ulang */
+  const segarkan = () => {
+    pilihUlang.current = true;
+  };
+  const tandaiSalinan = (g: Rentang) => {
+    salinanRef.current = g;
+    setSalinan(g);
+  };
+  const adaSalinan = () => salinanRef.current !== null;
+  const hapusSalinan = () => {
+    if (!salinanRef.current) return;
+    salinanRef.current = null;
+    setSalinan(null);
+  };
+  const lepas = () => {
+    ubah(null);
+    hapusSalinan();
+  };
+
+  const sasaran = (el: Element | null): { t: Titik; mode: ModeBlok } | null => {
+    const tabel = ref.current;
+    if (!el || !tabel) return null;
+    const th = el.closest<HTMLElement>("th[data-hc]");
+    if (th && tabel.contains(th)) return { t: { r: 0, c: Number(th.dataset.hc) }, mode: "kolom" };
+    const td = el.closest<HTMLElement>("td[data-sr]");
+    if (!td || !tabel.contains(td)) return null;
+    return { t: { r: Number(td.dataset.sr), c: Number(td.dataset.sc) }, mode: td.dataset.penuh ? "baris" : "sel" };
+  };
+  /** blok dari jangkar `a` ke `t` menurut cara memilih: sel, baris penuh, atau kolom penuh */
+  const bentang = (mode: ModeBlok, a: Titik, t: Titik): Pilihan => {
+    const akhir = Math.max(0, jumlahBaris - 1);
+    if (mode === "kolom")
+      return a.c === 0 && t.c === 0
+        ? { a: { r: 0, c: 0 }, f: { r: akhir, c: kolomAkhir } } // judul "No." = semua sel
+        : { a: { r: 0, c: a.c }, f: { r: akhir, c: t.c } };
+    if (mode === "baris") return { a: { r: a.r, c: 0 }, f: { r: t.r, c: kolomAkhir } };
+    return { a, f: t };
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLTableElement>) => {
+    penunjuk.current = e.pointerType;
+  };
+  /** klik sel: pilih sel itu (seluruh isinya terpilih, ketikan menggantinya); seret = blok; Shift+klik = perluas blok */
+  const onMouseDown = (e: MouseEvent<HTMLTableElement>) => {
+    const el = e.target as HTMLElement;
+    if (e.button !== 0 || el.closest("button, label, a, select, textarea")) return;
+    const hit = sasaran(el);
+    if (!hit || !jumlahBaris) return;
+    const input = hit.mode === "sel" ? isianDi(el.closest<HTMLElement>("td[data-sr]")) : null;
+    if (penunjuk.current !== "mouse") {
+      // layar sentuh: ketukan memilih satu sel (isian & papan ketik layar berjalan seperti biasa)
+      if (hit.mode === "sel") ubah({ a: hit.t, f: hit.t });
+      return;
+    }
+    // sel sedang disunting (kursor di dalam teks): klik menggeser kursor seperti biasa
+    if (input && !e.shiftKey && document.activeElement === input && input.value && !seluruh(input)) return;
+    e.preventDefault();
+    const q = sah(pilihRef.current);
+    if (e.shiftKey && q) {
+      if (hit.mode === "kolom") ubah({ a: { r: 0, c: q.a.c }, f: { r: jumlahBaris - 1, c: hit.t.c } });
+      else if (hit.mode === "baris") ubah({ a: { r: q.a.r, c: 0 }, f: { r: hit.t.r, c: kolomAkhir } });
+      else ubah({ a: q.a, f: hit.t });
+      if (!ref.current?.contains(document.activeElement)) fokuskan(q.a);
+      return;
+    }
+    const b = bentang(hit.mode, hit.t, hit.t);
+    seret.current = { mode: hit.mode, a: hit.t };
+    ubah(b);
+    fokuskan(b.a);
+  };
+
+  // Menyeret: blok mengikuti penunjuk; di tepi bingkai tabel (atau di luarnya) tabel bergulir sendiri seperti Excel
+  const langkah = useRef<() => void>(() => {});
+  langkah.current = () => {
+    bingkai.current = null;
+    const s = seret.current;
+    const tabel = ref.current;
+    const wrap = tabel?.parentElement;
+    if (!s || !tabel || !wrap) return;
+    const { x, y } = posisi.current;
+    const k = wrap.getBoundingClientRect();
+    const v = bagianTerlihat(wrap);
+    const atas = Math.max(v.top, k.top + (tabel.tHead?.offsetHeight ?? 0));
+    if (v.bottom - atas < 8 || v.right - v.left < 8) return;
+    // zona tepi lebih lebar bila bingkai terpotong layar/form (penunjuk tidak bisa keluar melewatinya)
+    const zAtas = v.top > k.top + 1 ? 24 : 6;
+    const zBawah = v.bottom < k.bottom - 1 ? 24 : 6;
+    const zKiri = v.left > k.left + 1 ? 24 : 6;
+    const zKanan = v.right < k.right - 1 ? 24 : 6;
+    const laju = (d: number) => Math.sign(d) * Math.min(28, 3 + Math.abs(d) / 2.5);
+    const dy = y < atas + zAtas ? y - (atas + zAtas) : y > v.bottom - zBawah ? y - (v.bottom - zBawah) : 0;
+    const dx = x < v.left + zKiri ? x - (v.left + zKiri) : x > v.right - zKanan ? x - (v.right - zKanan) : 0;
+    const sebelum = [wrap.scrollTop, wrap.scrollLeft];
+    if (dy) wrap.scrollTop += laju(dy);
+    if (dx) wrap.scrollLeft += laju(dx);
+    const bergulir = wrap.scrollTop !== sebelum[0] || wrap.scrollLeft !== sebelum[1];
+    const hit = sasaran(document.elementFromPoint(jepit(x, v.left + 2, v.right - 3), jepit(y, atas + 2, v.bottom - 3)));
+    if (hit) {
+      const b = bentang(s.mode, s.a, hit.t);
+      const q = pilihRef.current;
+      if (!q || !samaTitik(q.a, b.a) || !samaTitik(q.f, b.f)) ubah(b);
+    }
+    // penunjuk diam di tepi: terus bergulir selama tombol mouse ditahan (berhenti di ujung tabel)
+    if ((dx || dy) && bergulir) bingkai.current = requestAnimationFrame(() => langkah.current());
+  };
+  useEffect(() => {
+    const gerak = (e: globalThis.MouseEvent) => {
+      if (!seret.current) return;
+      if (!(e.buttons & 1)) {
+        seret.current = null;
+        return;
+      }
+      posisi.current = { x: e.clientX, y: e.clientY };
+      if (bingkai.current === null) bingkai.current = requestAnimationFrame(() => langkah.current());
+    };
+    const lepasSeret = () => {
+      seret.current = null;
+    };
+    window.addEventListener("mousemove", gerak);
+    window.addEventListener("mouseup", lepasSeret);
+    window.addEventListener("blur", lepasSeret);
+    return () => {
+      window.removeEventListener("mousemove", gerak);
+      window.removeEventListener("mouseup", lepasSeret);
+      window.removeEventListener("blur", lepasSeret);
+      if (bingkai.current !== null) cancelAnimationFrame(bingkai.current);
+    };
+  }, []);
+
+  /** fokus pindah ke isian lain (Tab, Enter, panah, ketukan) → blok kembali satu sel di sana */
+  const onFocus = (e: FocusEvent<HTMLTableElement>, titikIsian: (el: HTMLElement) => Titik | null) => {
+    if (e.target === ref.current) return setFokusTabel(true);
+    setFokusTabel(false);
+    const t = titikIsian(e.target as HTMLElement);
+    const q = pilihRef.current;
+    if (t && !seret.current && !(q && samaTitik(q.a, t))) ubah({ a: t, f: t });
+  };
+  /** fokus keluar tabel (klik di luar, tombol lain) → blok dilepas; berpindah jendela (mis. ke Excel) → blok tetap */
+  const onBlur = (e: FocusEvent<HTMLTableElement>) => {
+    if (e.target === ref.current) setFokusTabel(false);
+    const ke = e.relatedTarget as Node | null;
+    if (ke) {
+      if (!ref.current?.contains(ke)) lepas();
+      return;
+    }
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (document.hasFocus() && !(a && ref.current?.contains(a))) lepas();
+    }, 0);
+  };
+
+  /** kelas sorotan untuk sel di baris r yang menempati kolom c1..c2 */
+  const kelas = (r: number, c1: number, c2 = c1) => {
+    let s = "";
+    if (tampil && rentang && p && kenaRentang(rentang, r, c1, c2)) {
+      s = " g-pilih" + tepi(rentang, r, c1, c2, "g-p");
+      if (banyak && p.a.r === r && p.a.c >= c1 && p.a.c <= c2) s += " g-aktif";
+    }
+    if (tanda && kenaRentang(tanda, r, c1, c2)) s += " g-salin" + tepi(tanda, r, c1, c2, "g-s");
+    return s;
+  };
+  /** sorotan nomor baris & judul kolom yang tercakup blok */
+  const kelasBaris = (r: number) => (tampil && rentang && r >= rentang.r1 && r <= rentang.r2 ? " g-pilih-baris" : "");
+  const kelasKolom = (c: number) => (tampil && rentang && c >= rentang.c1 && c <= rentang.c2 ? " g-pilih-kolom" : "");
+
+  return {
+    terkini,
+    adaSalinan,
+    kelas,
+    kelasBaris,
+    kelasKolom,
+    tetapkan,
+    kumpul,
+    segarkan,
+    semua,
+    perluas,
+    tunjukkan,
+    tandaiSalinan,
+    hapusSalinan,
+    onPointerDown,
+    onMouseDown,
+    onFocus,
+    onBlur,
+  };
+}
+
+/**
+ * Cadangan salin/potong/tempel: sebagian browser mengirim kejadian clipboard ke <body> — bukan ke tabel — saat yang aktif sel
+ * hanya-baca (fokus di tabel tanpa teks terpilih). Kejadian seperti itu diteruskan ke penangan tabel.
+ */
+function useClipboardTabel(
+  ref: RefObject<HTMLTableElement | null>,
+  salin: (data: DataTransfer, potong: boolean) => boolean,
+  tempel?: (teks: string) => boolean,
+) {
+  const h = useRef({ salin, tempel });
+  h.current = { salin, tempel };
+  useEffect(() => {
+    const keBody = (e: globalThis.ClipboardEvent) => {
+      const t = ref.current;
+      return !!t && !!e.clipboardData && !e.defaultPrevented && document.activeElement === t && !t.contains(e.target as Node);
+    };
+    const salinan = (potong: boolean) => (e: globalThis.ClipboardEvent) => {
+      if (keBody(e) && h.current.salin(e.clipboardData!, potong)) e.preventDefault();
+    };
+    const onCopy = salinan(false);
+    const onCut = salinan(true);
+    const onPaste = (e: globalThis.ClipboardEvent) => {
+      if (keBody(e) && h.current.tempel?.(e.clipboardData!.getData("text/plain"))) e.preventDefault();
+    };
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCut);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [ref]);
 }
 
 /** Baris JUMLAH · PPN 11% · TOTAL · Terbilang di bawah tabel */
@@ -336,23 +743,28 @@ const CATATAN: Record<KodeCatatan, (n: number) => string> = {
   totalBeda: (n) => `total di salinan untuk ${n} barang tidak sama dengan jumlah × harga — periksa kolomnya`,
 };
 
-/** Ringkasan untuk bilah hasil tempel */
-function isiBilahHps(data: string[][], t: Tafsir, g: Golongan, s: Susunan, h: HasilPasang, ppnDicentang: boolean): IsiBilah {
+/**
+ * Ringkasan untuk bilah hasil tempel. null bila tempel blok biasa (susunan kolom sama, tanpa baris dilewati/catatan):
+ * cukup ditandai blok hasil tempel seperti Excel. `selalu` = tetap tampil (dari dialog atau daftar diganti).
+ */
+function isiBilahHps(data: string[][], t: Tafsir, g: Golongan, s: Susunan, h: HasilPasang, ppnDicentang: boolean, selalu: boolean, ganti: boolean): IsiBilah | null {
   const nSpek = s.barang.reduce((n, b) => n + b.spek.length, 0) + (h.spekLepas ? 0 : s.spekAwal.length);
   const alasan = g.jenis.flatMap((j, i) => (j === "lewati" && data[i].some((c) => c.trim()) ? [g.alasan[i]] : []));
-  const judul =
-    (h.masuk ? `${h.masuk} barang/jasa ditempel` : `${nSpek} spesifikasi ditempel`) +
-    (h.masuk && nSpek ? ` · ${nSpek} spesifikasi` : "") +
-    (alasan.length ? ` · ${alasan.length} baris dilewati (${[...new Set(alasan)].join(", ")})` : "");
   const catatan: string[] = [];
-  const belum = h.xs.filter((x) => h.kunci.includes(x.kunci) && salahBarang(x).length > 0).length;
-  if (belum) catatan.push(`${belum} barang belum lengkap — lengkapi sel merah`);
   const hitung = new Map<KodeCatatan, number>();
   s.barang.forEach((b) => new Set(b.catatan.map((c) => c.kode)).forEach((k) => hitung.set(k, (hitung.get(k) ?? 0) + 1)));
   hitung.forEach((n, k) => catatan.push(CATATAN[k](n)));
   if (ppnDicentang) catatan.push("PPN 11% dicentang karena salinan memuat baris PPN");
   if (h.lewat) catatan.push(`${h.lewat} barang tidak masuk (maksimal ${MAKS_BARANG} barang/jasa per paket)`);
   if (h.spekLepas) catatan.push(`${h.spekLepas} spesifikasi di awal salinan tidak punya barang dan diabaikan`);
+  if (!selalu && t.sumber === "posisi" && !alasan.length && !catatan.length) return null;
+  const belum = h.xs.filter((x) => h.kunci.includes(x.kunci) && salahBarang(x).length > 0).length;
+  if (belum) catatan.unshift(`${belum} barang belum lengkap — lengkapi sel merah`);
+  const judul =
+    (ganti ? "Daftar diganti: " : "") +
+    (h.masuk ? `${h.masuk} barang/jasa ditempel` : `${nSpek} spesifikasi ditempel`) +
+    (h.masuk && nSpek ? ` · ${nSpek} spesifikasi` : "") +
+    (alasan.length ? ` · ${alasan.length} baris dilewati (${[...new Set(alasan)].join(", ")})` : "");
   return { jenis: "hasil", judul, kolom: uraianKolom(t), catatan };
 }
 
@@ -405,14 +817,18 @@ export function TabelHps({
   const [dialog, setDialog] = useState<TempelAktif | null>(null);
   /** baris hasil tempel: sel wajibnya yang kosong langsung ditandai merah */
   const [sorot, setSorot] = useState<Set<number>>(() => new Set());
+  const nSpek = nilai.map((b) => b.spek.length);
+  const baris = susunBaris(nSpek);
+  const blok = useBlok(ref, baris.length, 6);
   const riwayat = useRiwayat({ nilai, ppn }, (v) => {
     if (v.ppn !== ppn) onPpn(v.ppn);
     onChange(v.nilai);
     setBilah(null);
+    blok.tetapkan(null);
+    blok.hapusSalinan();
+    blok.segarkan();
   });
   const tandai = coba > 0;
-  const nSpek = nilai.map((b) => b.spek.length);
-  const baris = susunBaris(nSpek);
 
   // Nomor urut hanya untuk baris yang terisi (sama dengan nomor yang tercetak)
   let n = 0;
@@ -431,10 +847,17 @@ export function TabelHps({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coba]);
 
-  /** semua perubahan isi tabel lewat sini agar tercatat di riwayat urungkan */
-  const ganti = (xs: BarisBarang[], aksi = "ubah") => {
+  /**
+   * Semua perubahan isi tabel lewat sini agar tercatat di riwayat urungkan.
+   * `sel` = sel yang sedang diketik → blok kembali satu sel di sana (seperti Excel).
+   */
+  const ganti = (xs: BarisBarang[], aksi = "ubah", sel?: Titik) => {
     riwayat.catat(aksi);
     if (bilah) setBilah(null);
+    blok.hapusSalinan();
+    if (sel) blok.kumpul(sel);
+    else if (/^(baris|spek)[+-]$/.test(aksi)) blok.tetapkan(null);
+    else blok.segarkan();
     onChange(xs);
   };
   const gantiPpn = (v: boolean) => {
@@ -442,11 +865,20 @@ export function TabelHps({
     onPpn(v);
   };
   const jumlahSpek = (xs: BarisBarang[]) => xs.map((x) => x.spek.length);
-  const ubah = (i: number, kolom: KolomBarang, v: string) => ganti(nilai.map((x, k) => (k === i ? { ...x, [kolom]: v } : x)), `ketik:${nilai[i].kunci}:${kolom}`);
+  const ubah = (i: number, kolom: KolomBarang, v: string) =>
+    ganti(
+      nilai.map((x, k) => (k === i ? { ...x, [kolom]: v } : x)),
+      `ketik:${nilai[i].kunci}:${kolom}`,
+      { r: indeksBaris(nSpek, i), c: INDEKS_KOLOM[kolom] },
+    );
   /** tanda "- " yang diketik di awal spesifikasi dibuang karena tanda "-" sudah tampil di depan sel */
   const ubahSpek = (i: number, j: number, teks: string) => {
     const bersih = teks.replace(/^\s*[-–—•*·]\s+/, "");
-    ganti(nilai.map((x, k) => (k === i ? { ...x, spek: x.spek.map((s, m) => (m === j ? bersih : s)) } : x)), `ketik:${nilai[i].kunci}:s${j}`);
+    ganti(
+      nilai.map((x, k) => (k === i ? { ...x, spek: x.spek.map((s, m) => (m === j ? bersih : s)) } : x)),
+      `ketik:${nilai[i].kunci}:s${j}`,
+      { r: indeksBaris(nSpek, i, j), c: 1 },
+    );
   };
 
   const tambahBaris = (setelah: number, kolom: KolomBarang = "uraian") => {
@@ -481,18 +913,108 @@ export function TabelHps({
     ganti(xs, "spek-");
   };
 
+  /* ---------- Blok sel ---------- */
+  const titikIsian = (el: HTMLElement): Titik | null =>
+    el.tagName === "INPUT" && el.dataset.r !== undefined ? { r: Number(el.dataset.r), c: INDEKS_KOLOM[el.dataset.c as KolomBarang] ?? 1 } : null;
+  /** isi sel (r, c) untuk disalin; angka tanpa titik ribuan agar terbaca sebagai angka di Excel */
+  const nilaiSel = (r: number, c: number): string => {
+    const b = baris[r];
+    if (!b) return "";
+    const x = nilai[b.i];
+    if (b.jenis === "spek") return c === 1 && x.spek[b.j].trim() ? `- ${x.spek[b.j].trim()}` : "";
+    if (c === 0) return nomor[b.i] ? String(nomor[b.i]) : "";
+    if (c === 5) {
+      const t = (Number(x.jumlah) || 0) * (Number(x.harga) || 0);
+      return t ? String(t) : "";
+    }
+    const k = KOLOM_DI[c];
+    return k ? x[k] : "";
+  };
+  const adaIsian = (g: Rentang) => KOLOM_DI.slice(g.c1, g.c2 + 1).some(Boolean);
+  /** isi satu sel dengan teks (angka untuk kolom Jumlah & Harga); kolom No. & Total dilewati */
+  const isiSel = (x: BarisBarang, c: number, teks: string) => {
+    const k = KOLOM_DI[c];
+    if (!k) return;
+    const v = teks.replace(/\s*\n\s*/g, " ").trim();
+    if (k === "jumlah" || k === "harga") x[k] = digitDari(v);
+    else if (k === "uraian") x.uraian = tanpaPoin(v).slice(0, 200);
+    else x[k] = v.slice(0, k === "satuan" ? 30 : 100);
+  };
+  /** ubah semua sel blok: `isi(x, c)` untuk sel barang, `isiSpek(x, j)` untuk sel spesifikasi; false bila tidak ada yang berubah */
+  const ubahRentang = (g: Rentang, aksi: string, isi: (x: BarisBarang, c: number) => void, isiSpek?: (x: BarisBarang, j: number) => void) => {
+    const xs = nilai.map((x) => ({ ...x, spek: [...x.spek] }));
+    for (let r = g.r1; r <= g.r2; r++) {
+      const b = baris[r];
+      if (!b) continue;
+      if (b.jenis === "spek") {
+        if (isiSpek && g.c1 <= 3 && g.c2 >= 1) isiSpek(xs[b.i], b.j);
+        continue;
+      }
+      for (let c = g.c1; c <= g.c2; c++) isi(xs[b.i], c);
+    }
+    if (xs.every((x, i) => samaBaris(x, nilai[i]))) return false;
+    ganti(xs, aksi);
+    return true;
+  };
+  const kosongkanRentang = (g: Rentang) =>
+    ubahRentang(
+      g,
+      "hapus",
+      (x, c) => isiSel(x, c, ""),
+      (x, j) => (x.spek[j] = ""),
+    );
+  /** satu nilai salinan → semua sel blok (seperti Excel) */
+  const isiRentang = (g: Rentang, teks: string) => {
+    if (!adaIsian(g)) return onInfo?.("Kolom No. dan Total Jumlah terisi otomatis");
+    ubahRentang(
+      g,
+      "isi",
+      (x, c) => isiSel(x, c, teks),
+      (x, j) => (x.spek[j] = tanpaPoin(teks.replace(/\s*\n\s*/g, " ")).slice(0, 200)),
+    );
+  };
+  /** satu baris salinan → diulang ke tiap baris barang di blok (lebar blok kelipatan lebar salinan) */
+  const ulangBaris = (g: Rentang, sel: string[]) =>
+    ubahRentang(g, "isi", (x, c) => isiSel(x, c, sel[(c - g.c1) % sel.length] ?? ""));
+  /** Ctrl/⌘+C / X: blok (atau sel aktif yang belum disunting) → clipboard sebagai sel-sel Excel; false = salin biasa */
+  const salinKe = (data: DataTransfer, sasaran: EventTarget | null, potong: boolean) => {
+    const { rentang: g, banyak } = blok.terkini();
+    if (!g) return false;
+    // sedang menyunting dengan sebagian teks terpilih: salin teks itu saja seperti biasa
+    if (!banyak && sasaran instanceof HTMLInputElement && sasaran.selectionStart !== sasaran.selectionEnd && !seluruh(sasaran)) return false;
+    data.setData("text/plain", tsvRentang(g, nilaiSel));
+    if (potong) kosongkanRentang(g);
+    else blok.tandaiSalinan(g);
+    return true;
+  };
+  const salinBlok = (e: ClipboardEvent<HTMLTableElement>, potong: boolean) => {
+    if (salinKe(e.clipboardData, e.target, potong)) e.preventDefault();
+  };
+
   /* ---------- Tempel dari Excel ---------- */
-  const pasang = (tp: TempelAktif, g: Golongan, s: Susunan) => {
+  /** `dariDialog` = hasil "Atur kolom & baris…" → bilah selalu tampil agar pilihannya bisa diatur ulang */
+  const pasang = (tp: TempelAktif, g: Golongan, s: Susunan, dariDialog = false) => {
     const dasar = tp.sebelum ?? { nilai, ppn };
     const h = pasangTempel(dasar.nilai, s, tp.asal.mode, tp.asal.mulai, tp.asal.fokusBarang);
     if (!h.masuk && !s.spekAwal.length) return onInfo?.("Tidak ada baris barang/jasa yang bisa ditempel");
     // tempel ulang dari "Atur kolom & baris…" memakai isi tabel sebelum tempel; riwayatnya sudah tercatat
     if (!tp.sebelum) riwayat.catat("tempel");
+    blok.hapusSalinan();
     const ppnDicentang = g.adaPpn && !dasar.ppn;
     if ((ppnDicentang || dasar.ppn) !== ppn) onPpn(ppnDicentang || dasar.ppn);
     onChange(h.xs);
     setSorot(new Set(h.kunci));
-    setBilah({ isi: isiBilahHps(tp.data, tp.tafsir, g, s, h, ppnDicentang), tempel: { ...tp, sebelum: dasar } });
+    const diganti = tp.asal.mode === "ganti" && dasar.nilai.some(barisTerisi);
+    const isi = isiBilahHps(tp.data, tp.tafsir, g, s, h, ppnDicentang, dariDialog || diganti, diganti);
+    setBilah(isi ? { isi, tempel: { ...tp, sebelum: dasar } } : null);
+    // sel hasil tempel menjadi blok terpilih, seperti sesudah tempel di Excel
+    const idx = h.kunci.map((k) => h.xs.findIndex((x) => x.kunci === k)).filter((i) => i >= 0);
+    const kolom = tp.tafsir.peran.map((p) => URUTAN_TABEL.indexOf(p)).filter((c) => c > 0);
+    if (idx.length && kolom.length) {
+      const ns = jumlahSpek(h.xs);
+      const akhir = Math.max(...idx);
+      blok.tetapkan({ r: indeksBaris(ns, Math.min(...idx)), c: Math.min(...kolom) }, { r: indeksBaris(ns, akhir) + ns[akhir], c: Math.max(...kolom) }, true);
+    } else blok.tetapkan(null);
   };
 
   const prosesTempel = (teks: string, asal: AsalTempel) => {
@@ -506,38 +1028,77 @@ export function TabelHps({
     pasang(tp, g, susunBarang(data, tafsir.peran, g.jenis));
   };
 
-  // Ctrl/⌘+V di sel tabel
-  const onPasteCapture = (e: ClipboardEvent<HTMLTableElement>) => {
-    const el = e.target as HTMLInputElement;
-    if (el.tagName !== "INPUT" || el.dataset.r === undefined) return;
-    const mentah = e.clipboardData.getData("text/plain");
-    if (!banyakSel(mentah)) return; // satu sel biasa ditangani isian itu sendiri
-    e.preventDefault();
-    e.stopPropagation();
-    const b = baris[Number(el.dataset.r)];
-    if (!b) return;
-    if (b.jenis === "spek") {
-      // di baris spesifikasi: salinan satu kolom = beberapa baris spesifikasi
-      const data = bacaSalinan(mentah);
-      if (data.every((d) => d.filter((x) => x.trim()).length <= 1)) {
-        const x = nilai[b.i];
-        const teks = data
-          .flatMap((d) => (d.find((y) => y.trim()) ?? "").split("\n"))
-          .map((s) => tanpaPoin(s).slice(0, 200))
-          .filter(Boolean)
-          .slice(0, MAKS_SPEK - x.spek.length + 1);
-        ganti(nilai.map((y, k) => (k === b.i ? { ...y, spek: [...x.spek.slice(0, b.j), ...teks, ...x.spek.slice(b.j + 1)] } : y)), "tempel");
-        setBilah({ isi: { jenis: "hasil", judul: `${teks.length} baris spesifikasi ditempel` } });
-        return;
-      }
-      return prosesTempel(mentah, { mode: "timpa", mulai: b.i + 1, posisi: 1, fokusBarang: b.i });
-    }
-    prosesTempel(mentah, { mode: "timpa", mulai: b.i, posisi: URUTAN_TABEL.indexOf(el.dataset.c as KolomBarang), fokusBarang: b.i });
+  /** barang pertama pada atau sesudah baris tampilan r */
+  const barangDari = (r: number) => {
+    const b = baris[r];
+    if (!b) return nilai.length;
+    return b.jenis === "barang" ? b.i : b.i + 1;
   };
 
-  // Ctrl/⌘+V saat kursor tidak di sel mana pun (mis. sesudah Esc atau klik tombol) → ditambahkan di bawah barang yang ada
+  /** salinan beberapa sel → mulai sel kiri-atas blok, seperti Excel; susunan kolom lain dikenali dari judul/isinya */
+  const tempelBlok = (mentah: string, g: Rentang) => {
+    const data = bacaSalinan(mentah);
+    if (!data.length) return;
+    const lebarData = Math.max(...data.map((d) => d.length));
+    const lebarBlok = g.c2 - g.c1 + 1;
+    const nBarangBlok = baris.slice(g.r1, g.r2 + 1).filter((b) => b.jenis === "barang").length;
+    const semuaSel = g.r1 === 0 && g.r2 === baris.length - 1 && g.c1 === 0 && g.c2 === 6;
+    // satu baris salinan ke blok beberapa baris yang lebarnya kelipatan salinan → diulang ke tiap baris (seperti Excel)
+    if (data.length === 1 && nBarangBlok > 1 && !semuaSel && lebarBlok % lebarData === 0) return void ulangBaris(g, data[0]);
+    const b = baris[g.r1];
+    if (b?.jenis === "spek" && g.c1 <= 1 && data.every((d) => d.filter((x) => x.trim()).length <= 1)) {
+      // di sel spesifikasi (atau nomor barisnya): salinan satu kolom menimpa spesifikasi mulai baris itu (sisanya ditambahkan)
+      const x = nilai[b.i];
+      const teks = data
+        .flatMap((d) => (d.find((y) => y.trim()) ?? "").split("\n"))
+        .map((t) => tanpaPoin(t).slice(0, 200))
+        .filter(Boolean);
+      if (!teks.length) return;
+      const spek = [...x.spek.slice(0, b.j), ...teks, ...x.spek.slice(b.j + teks.length)].slice(0, MAKS_SPEK);
+      const masuk = Math.min(teks.length, MAKS_SPEK - b.j);
+      ganti(nilai.map((y, k) => (k === b.i ? { ...y, spek } : y)), "tempel");
+      if (masuk < teks.length) onInfo?.(`Maksimal ${MAKS_SPEK} baris spesifikasi per barang/jasa`);
+      blok.tetapkan({ r: g.r1, c: 1 }, { r: g.r1 + masuk - 1, c: 3 }, true);
+      return;
+    }
+    // blok mulai di kolom No. (baris penuh / semua sel): salinan tanpa kolom nomor masuk mulai kolom Uraian
+    const posisi = g.c1 === 0 && !kolomNomor(data) ? 1 : g.c1;
+    if (lebarData === 1 && (posisi === 0 || posisi === 5)) return onInfo?.("Kolom No. dan Total Jumlah terisi otomatis — tempel ke kolom lain");
+    prosesTempel(mentah, { mode: semuaSel ? "ganti" : "timpa", mulai: barangDari(g.r1), posisi, fokusBarang: b ? b.i : null });
+  };
+
+  /**
+   * Ctrl/⌘+V di tabel: mulai sel kiri-atas blok (atau sel isian aktif); satu nilai ke semua sel blok.
+   * `isian` = sel isian tempat menempel (null = fokus di tabel). false = bukan urusan tabel (tempel biasa / ditambahkan di bawah).
+   */
+  const tempelKe = (mentah: string, isian: Titik | null) => {
+    const { rentang: g, banyak } = blok.terkini();
+    const keBlok = !!g && (banyak || !isian);
+    if (!banyakSel(mentah)) {
+      if (!keBlok || !g) return false; // satu nilai ke satu sel isian: ditempel isian itu sendiri
+      isiRentang(g, nilaiTunggal(mentah));
+      return true;
+    }
+    const tujuan = keBlok && g ? g : isian ? { r1: isian.r, r2: isian.r, c1: isian.c, c2: isian.c } : null;
+    if (!tujuan) return false;
+    tempelBlok(mentah, tujuan);
+    return true;
+  };
+  const onPasteCapture = (e: ClipboardEvent<HTMLTableElement>) => {
+    const naTabel = e.target === ref.current;
+    const isian = naTabel ? null : titikIsian(e.target as HTMLElement);
+    if (!naTabel && !isian) return;
+    if (!tempelKe(e.clipboardData.getData("text/plain"), isian)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Ctrl/⌘+V saat kursor tidak di tabel / isian mana pun (mis. sesudah Esc atau klik tombol) → ditambahkan di bawah barang yang ada
   const tempelLuar = useRef<(teks: string) => void>(() => {});
   tempelLuar.current = (teks) => prosesTempel(teks, { mode: "tambah", mulai: akhirIsi, fokusBarang: null });
+  const tempelTabel = useRef<(teks: string) => boolean>(() => false);
+  tempelTabel.current = (teks) => tempelKe(teks, null);
+  useClipboardTabel(ref, (data, potong) => salinKe(data, null, potong));
   const urungLuar = useRef<(ulang: boolean) => void>(() => {});
   urungLuar.current = (ulang) => (ulang ? riwayat.ulangi() : riwayat.urungkan());
   const adaDialog = dialog !== null;
@@ -548,9 +1109,12 @@ export function TabelHps({
       return !(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable));
     };
     const onPaste = (e: globalThis.ClipboardEvent) => {
-      if (e.defaultPrevented || !bebas()) return;
+      if (e.defaultPrevented) return;
       const teks = e.clipboardData?.getData("text/plain") ?? "";
-      if (!banyakSel(teks)) return;
+      // fokus di tabel (sel hanya-baca aktif) tetapi browser mengirim kejadian ke <body>: tempel ke blok
+      const t = ref.current;
+      if (t && document.activeElement === t && !t.contains(e.target as Node) && tempelTabel.current(teks)) return e.preventDefault();
+      if (!bebas() || !banyakSel(teks)) return;
       e.preventDefault();
       tempelLuar.current(teks);
     };
@@ -603,12 +1167,70 @@ export function TabelHps({
     if (!riwayat.ulangi()) onInfo?.("Tidak ada yang bisa diulangi");
   };
 
+  /** pindah sel aktif: sel berisian difokuskan, sel hanya-baca dipilih dengan fokus tetap di tabel */
+  const pindahSel = (t: Titik) => {
+    const b = baris[t.r];
+    const dataC = b?.jenis === "spek" ? (t.c >= 1 && t.c <= 3 ? "uraian" : null) : KOLOM_DI[t.c];
+    if (dataC && fokus(t.r, dataC)) return;
+    blok.tetapkan(t);
+    blok.tunjukkan(t);
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTableElement>) => {
     const el = e.target as HTMLInputElement;
-    if (el.tagName !== "INPUT" || el.dataset.r === undefined || e.nativeEvent.isComposing) return;
+    const naTabel = e.target === ref.current;
+    const isian = naTabel ? null : titikIsian(el);
+    if ((!naTabel && !isian) || e.nativeEvent.isComposing) return;
     if (tombolUrung(e) || tombolUlang(e)) {
       e.preventDefault();
       return tombolUrung(e) ? urungkan() : ulangi();
+    }
+    const { pilih, rentang: g, banyak } = blok.terkini();
+    const aktif: Titik = isian ?? pilih?.a ?? { r: 0, c: 1 };
+    // "siap" = sel terpilih tetapi belum disunting (mode Ready di Excel): Shift+panah & Ctrl/⌘+A memblok sel
+    const siap = naTabel || banyak || !el.value || seluruh(el);
+    if (e.key === "Escape" && blok.adaSalinan()) {
+      // Esc pertama menghapus garis putus-putus blok yang disalin (seperti Excel)
+      e.preventDefault();
+      e.stopPropagation();
+      return blok.hapusSalinan();
+    }
+    if (ARAH[e.key] && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && siap) {
+      e.preventDefault();
+      const [dr, dc] = ARAH[e.key];
+      return blok.perluas(dr, dc, aktif);
+    }
+    if (tombolSemua(e) && siap) {
+      e.preventDefault();
+      return blok.semua();
+    }
+    if (g && (banyak || naTabel)) {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        return void kosongkanRentang(g);
+      }
+      if (banyak && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        return blok.kumpul(aktif);
+      }
+      if (banyak && (ARAH[e.key] || e.key === "Enter" || e.key === "Tab")) blok.kumpul(aktif);
+    }
+    if (naTabel) {
+      // sel aktif hanya-baca (No., Total Jumlah, sel kosong di baris spesifikasi): panah/Enter/Tab memindah sel aktif
+      const gerak: [number, number] | undefined =
+        ARAH[e.key] && !e.shiftKey ? ARAH[e.key] : e.key === "Enter" ? [e.shiftKey ? -1 : 1, 0] : e.key === "Tab" ? [0, e.shiftKey ? -1 : 1] : undefined;
+      if (gerak && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        return pindahSel({ r: jepit(aktif.r + gerak[0], 0, baris.length - 1), c: jepit(aktif.c + gerak[1], 0, 6) });
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        blok.tetapkan(null);
+        ref.current?.blur();
+      }
+      return;
     }
     const r = Number(el.dataset.r);
     const c = el.dataset.c as KolomBarang;
@@ -620,6 +1242,7 @@ export function TabelHps({
         // keluar dari sel saja (isian tabel tidak hilang karena salah tekan)
         e.preventDefault();
         e.stopPropagation();
+        blok.tetapkan(null);
         el.blur();
         return;
       case "F2":
@@ -681,6 +1304,14 @@ export function TabelHps({
     }
   };
 
+  /** klik dua kali di sel isian: sunting isinya (kursor di akhir teks) */
+  const onDoubleClick = (e: MouseEvent<HTMLTableElement>) => {
+    const input = isianDi((e.target as HTMLElement).closest<HTMLElement>("td[data-sr]"));
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+
   const kelasSel = (x: BarisBarang, kolom: KolomBarang, tambahan = "") =>
     `g-sel${tambahan}${(tandai || sorot.has(x.kunci)) && barisTerisi(x) && salahBarang(x).includes(kolom) ? " g-salah" : ""}`;
   const kosongSemua = n === 0;
@@ -701,7 +1332,7 @@ export function TabelHps({
               Tempel<span className="tik-lengkap"> dari Excel</span>
             </span>
           </button>
-          <button type="button" className="btn soft sm" onClick={salinExcel} disabled={!n} title="Salin tabel ini untuk ditempel di Excel">
+          <button type="button" className="btn soft sm" onClick={salinExcel} disabled={!n} title="Salin seluruh tabel untuk ditempel di Excel">
             <Icon name="copy" />
             <span>
               Salin<span className="tik-lengkap"> ke Excel</span>
@@ -725,12 +1356,24 @@ export function TabelHps({
       )}
       <div className="grid-excel-wrap">
         <table
-          className="grid-excel"
+          className="grid-excel g-blok"
           ref={ref}
+          tabIndex={-1}
           onKeyDown={onKeyDown}
           onPasteCapture={onPasteCapture}
-          onMouseDown={() => (tabAwal.current = null)}
-          onFocus={() => riwayat.putus()}
+          onCopy={(e) => salinBlok(e, false)}
+          onCut={(e) => salinBlok(e, true)}
+          onPointerDown={blok.onPointerDown}
+          onMouseDown={(e) => {
+            tabAwal.current = null;
+            blok.onMouseDown(e);
+          }}
+          onDoubleClick={onDoubleClick}
+          onFocus={(e) => {
+            riwayat.putus();
+            blok.onFocus(e, titikIsian);
+          }}
+          onBlur={blok.onBlur}
         >
           <colgroup>
             <col className="k-no" />
@@ -744,13 +1387,27 @@ export function TabelHps({
           </colgroup>
           <thead>
             <tr>
-              <th className="g-no">No.</th>
-              <th>Uraian</th>
-              <th className="r">Jumlah</th>
-              <th>Satuan</th>
-              <th className="r">Harga Satuan (Rp)</th>
-              <th className="r">Total Jumlah (Rp)</th>
-              <th>Ket</th>
+              <th className={"g-no" + blok.kelasKolom(0)} data-hc={0} title="Pilih semua sel">
+                No.
+              </th>
+              <th data-hc={1} className={blok.kelasKolom(1)}>
+                Uraian
+              </th>
+              <th data-hc={2} className={"r" + blok.kelasKolom(2)}>
+                Jumlah
+              </th>
+              <th data-hc={3} className={blok.kelasKolom(3)}>
+                Satuan
+              </th>
+              <th data-hc={4} className={"r" + blok.kelasKolom(4)}>
+                Harga Satuan (Rp)
+              </th>
+              <th data-hc={5} className={"r" + blok.kelasKolom(5)}>
+                Total Jumlah (Rp)
+              </th>
+              <th data-hc={6} className={blok.kelasKolom(6)}>
+                Ket
+              </th>
               <th className="g-aksi">
                 <span className="sr">Aksi</span>
               </th>
@@ -762,8 +1419,8 @@ export function TabelHps({
               if (b.jenis === "spek")
                 return (
                   <tr key={`${x.kunci}-s${b.j}`} className="g-spek">
-                    <td className="g-no" />
-                    <td className="g-sel" colSpan={3}>
+                    <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
+                    <td className={"g-sel" + blok.kelas(r, 1, 3)} colSpan={3} {...atributSel(r, 1, 3)}>
                       <div className="g-spek-isi">
                         <span className="g-poin" aria-hidden="true">
                           -
@@ -780,7 +1437,7 @@ export function TabelHps({
                         />
                       </div>
                     </td>
-                    <td colSpan={3} className="g-mati" />
+                    <td colSpan={3} className={"g-mati" + blok.kelas(r, 4, 6)} {...atributSel(r, 4, 6)} />
                     <td className="g-aksi">
                       <button
                         type="button"
@@ -799,8 +1456,10 @@ export function TabelHps({
               const label = `baris ${b.i + 1}`;
               return (
                 <tr key={x.kunci} className="g-barang">
-                  <td className="g-no num">{nomor[b.i] || ""}</td>
-                  <td className={kelasSel(x, "uraian")}>
+                  <td className={"g-no num" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" title="Pilih seluruh baris">
+                    {nomor[b.i] || ""}
+                  </td>
+                  <td className={kelasSel(x, "uraian") + blok.kelas(r, 1)} {...atributSel(r, 1)}>
                     <input
                       data-r={r}
                       data-c="uraian"
@@ -812,7 +1471,7 @@ export function TabelHps({
                       autoComplete="off"
                     />
                   </td>
-                  <td className={kelasSel(x, "jumlah", " r")}>
+                  <td className={kelasSel(x, "jumlah", " r") + blok.kelas(r, 2)} {...atributSel(r, 2)}>
                     <InputRupiah
                       data-r={r}
                       data-c="jumlah"
@@ -823,7 +1482,7 @@ export function TabelHps({
                       aria-label={`Jumlah ${label}`}
                     />
                   </td>
-                  <td className={kelasSel(x, "satuan")}>
+                  <td className={kelasSel(x, "satuan") + blok.kelas(r, 3)} {...atributSel(r, 3)}>
                     <input
                       data-r={r}
                       data-c="satuan"
@@ -835,7 +1494,7 @@ export function TabelHps({
                       autoComplete="off"
                     />
                   </td>
-                  <td className={kelasSel(x, "harga", " r")}>
+                  <td className={kelasSel(x, "harga", " r") + blok.kelas(r, 4)} {...atributSel(r, 4)}>
                     <InputRupiah
                       data-r={r}
                       data-c="harga"
@@ -846,8 +1505,10 @@ export function TabelHps({
                       aria-label={`Harga satuan ${label}`}
                     />
                   </td>
-                  <td className="g-hasil num">{total > 0 ? angka(total) : ""}</td>
-                  <td className="g-sel">
+                  <td className={"g-hasil num" + blok.kelas(r, 5)} {...atributSel(r, 5)}>
+                    {total > 0 ? angka(total) : ""}
+                  </td>
+                  <td className={"g-sel" + blok.kelas(r, 6)} {...atributSel(r, 6)}>
                     <input
                       data-r={r}
                       data-c="ket"
@@ -891,9 +1552,14 @@ export function TabelHps({
           Tambah baris
         </button>
         <p className="tabel-isian-petunjuk">
-          <kbd>Tab</kbd> / <kbd>Enter</kbd> pindah sel · <kbd>Alt/⌥</kbd>+<kbd>Enter</kbd> tambah spesifikasi · <kbd>Ctrl/⌘</kbd>+<kbd>V</kbd>{" "}
-          tempel daftar dari Excel — susunan kolom draft Anda dikenali otomatis · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> urungkan. Baris kosong tidak ikut
-          disimpan · maksimal {MAKS_BARANG} barang/jasa.
+          <span className="tip-mouse">
+            <b>Seperti Excel:</b> blok sel dengan seret mouse, <kbd>Shift</kbd>+klik, atau <kbd>Shift</kbd>+panah (klik nomor baris / judul kolom
+            untuk baris / kolom penuh) · <kbd>Ctrl/⌘</kbd>+<kbd>C</kbd> salin · <kbd>Ctrl/⌘</kbd>+<kbd>V</kbd> tempel mulai sel kiri-atas blok ·{" "}
+            <kbd>Delete</kbd> kosongkan · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> urungkan · klik dua kali / <kbd>F2</kbd> sunting sel ·{" "}
+            <kbd>Alt/⌥</kbd>+<kbd>Enter</kbd> tambah spesifikasi.{" "}
+          </span>
+          <span className="tip-sentuh">Ketuk sel untuk mengisi · tombol + di ujung baris menambah spesifikasi. </span>
+          Baris kosong tidak ikut disimpan · maksimal {MAKS_BARANG} barang/jasa.
         </p>
       </div>
       {dialog && (
@@ -914,7 +1580,7 @@ export function TabelHps({
           onMasukkan={(p) => {
             const tp: TempelAktif = { ...dialog, tafsir: p.tafsir, paksa: p.paksa, asal: { ...dialog.asal, mode: p.mode } };
             setDialog(null);
-            pasang(tp, golongkan(dialog.data, p.tafsir, p.paksa), p.susunan);
+            pasang(tp, golongkan(dialog.data, p.tafsir, p.paksa), p.susunan, true);
           }}
         />
       )}
@@ -946,21 +1612,35 @@ export function TabelBeli({
   const ref = useRef<HTMLTableElement>(null);
   const { fokus } = useFokusSel(ref);
   const [bilah, setBilah] = useState<IsiBilah | null>(null);
+  const nSpek = item.map((x) => x.spesifikasi.length);
+  const baris = susunBaris(nSpek);
+  // kolom: 0 No · 1 Uraian · 2 Jumlah · 3 Satuan · 4 Harga HPS · 5 Harga Satuan (isian) · 6 Jumlah (Rp)
+  const blok = useBlok(ref, baris.length, 6);
   const riwayat = useRiwayat({ harga, ppn }, (v) => {
     onHarga(v.harga);
     if (v.ppn !== ppn) onPpn(v.ppn);
     setBilah(null);
+    blok.tetapkan(null);
+    blok.hapusSalinan();
+    blok.segarkan();
   });
-  const nSpek = item.map((x) => x.spesifikasi.length);
-  const baris = susunBaris(nSpek);
   const jumlahRp = item.reduce((s, x, i) => s + x.jumlah * (Number(harga[i]) || 0), 0);
   const total = jumlahRp + (ppn ? hitungPpn(jumlahRp) : 0);
 
-  const ubahHarga = (i: number, v: string) => {
-    riwayat.catat(`ketik:${i}`);
+  const gantiHarga = (h: string[], aksi: string, sel?: Titik) => {
+    riwayat.catat(aksi);
     if (bilah) setBilah(null);
-    onHarga(harga.map((y, k) => (k === i ? v : y)));
+    blok.hapusSalinan();
+    if (sel) blok.kumpul(sel);
+    else blok.segarkan();
+    onHarga(h);
   };
+  const ubahHarga = (i: number, v: string) =>
+    gantiHarga(
+      harga.map((y, k) => (k === i ? v : y)),
+      `ketik:${i}`,
+      { r: indeksBaris(nSpek, i), c: 5 },
+    );
   const gantiPpn = (v: boolean) => {
     riwayat.catat("ppn");
     onPpn(v);
@@ -975,28 +1655,40 @@ export function TabelBeli({
     const k = i + arah;
     if (k >= 0 && k < item.length) fokus(indeksBaris(nSpek, k), "beli");
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLTableElement>) => {
-    const el = e.target as HTMLInputElement;
-    if (el.tagName !== "INPUT" || el.dataset.i === undefined || e.nativeEvent.isComposing) return;
-    const i = Number(el.dataset.i);
-    if (tombolUrung(e) || tombolUlang(e)) {
-      e.preventDefault();
-      return tombolUrung(e) ? urungkan() : ulangi();
+
+  /* ---------- Blok sel ---------- */
+  const titikIsian = (el: HTMLElement): Titik | null => (el.tagName === "INPUT" && el.dataset.r !== undefined ? { r: Number(el.dataset.r), c: 5 } : null);
+  const nilaiSel = (r: number, c: number): string => {
+    const b = baris[r];
+    if (!b) return "";
+    const x = item[b.i];
+    if (b.jenis === "spek") return c === 1 ? `- ${x.spesifikasi[b.j]}` : "";
+    const h = Number(harga[b.i]) || 0;
+    return [String(b.i + 1), x.uraian, String(x.jumlah), x.satuan, String(x.hargaHps), harga[b.i] ?? "", h ? String(x.jumlah * h) : ""][c] ?? "";
+  };
+  /** ubah harga barang yang kolom Harga Satuan-nya tercakup blok; false bila tidak ada yang berubah */
+  const ubahRentang = (g: Rentang, aksi: string, nilaiBaru: (i: number) => string) => {
+    if (g.c1 > 5 || g.c2 < 5) return false;
+    const h = [...harga];
+    for (let r = g.r1; r <= g.r2; r++) {
+      const b = baris[r];
+      if (b?.jenis === "barang") h[b.i] = nilaiBaru(b.i);
     }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      el.blur();
-    } else if (e.key === "F2") {
-      e.preventDefault();
-      el.setSelectionRange(el.value.length, el.value.length);
-    } else if (e.key === "Enter" || e.key === "ArrowDown") {
-      e.preventDefault(); // Enter jangan mengirim form
-      pindah(i, e.key === "Enter" && e.shiftKey ? -1 : 1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      pindah(i, -1);
-    }
+    if (h.every((v, i) => v === harga[i])) return false;
+    gantiHarga(h, aksi);
+    return true;
+  };
+  const salinKe = (data: DataTransfer, sasaran: EventTarget | null, potong: boolean) => {
+    const { rentang: g, banyak } = blok.terkini();
+    if (!g) return false;
+    if (!banyak && sasaran instanceof HTMLInputElement && sasaran.selectionStart !== sasaran.selectionEnd && !seluruh(sasaran)) return false;
+    data.setData("text/plain", tsvRentang(g, nilaiSel));
+    if (potong) ubahRentang(g, "hapus", () => "");
+    else blok.tandaiSalinan(g);
+    return true;
+  };
+  const salinBlok = (e: ClipboardEvent<HTMLTableElement>, potong: boolean) => {
+    if (salinKe(e.clipboardData, e.target, potong)) e.preventDefault();
   };
 
   /**
@@ -1009,7 +1701,9 @@ export function TabelBeli({
     const pasang: { i: number; harga: string; jumlah?: string }[] = [];
     const lepas: string[] = [];
     let cara = "menurut urutan";
+    let berurutan = false;
     if (Math.max(...data.map((r) => r.length)) <= 1) {
+      berurutan = true;
       data
         .map((r) => (r[0] ?? "").trim())
         .filter((v) => v && angkaDari(v) !== null)
@@ -1024,6 +1718,7 @@ export function TabelBeli({
       const berharga = s.barang.filter((b) => b.harga);
       const nama = berharga.map((b) => b.uraian);
       let tujuan: (number | null)[] = berharga.map((_, k) => (mulai + k < item.length ? mulai + k : null));
+      berurutan = t.sumber === "posisi";
       if (s.cakup.uraian && nama.some(Boolean)) {
         const cocok = cocokkanNama(
           item.map((x) => x.uraian),
@@ -1032,6 +1727,7 @@ export function TabelBeli({
         if (cocok.filter((x) => x !== null).length * 2 >= nama.length) {
           tujuan = cocok;
           cara = "dicocokkan menurut nama barang";
+          berurutan = false;
           nama.forEach((x, k) => cocok[k] === null && lepas.push(x));
         }
       }
@@ -1041,26 +1737,50 @@ export function TabelBeli({
       });
     }
     if (!pasang.length) return onInfo?.("Tidak ada harga yang bisa ditempel");
-    riwayat.catat("tempel");
     const h = [...harga];
     pasang.forEach((p) => (h[p.i] = p.harga));
-    onHarga(h);
+    gantiHarga(h, "tempel");
     const catatan: string[] = [];
     const beda = pasang.filter((p) => p.jumlah && Number(p.jumlah) !== item[p.i].jumlah);
     if (beda.length) catatan.push(`jumlah berbeda dengan HPS: ${beda.map((p) => `${item[p.i].uraian} ${p.jumlah} (HPS ${item[p.i].jumlah})`).join(", ")}`);
     if (lepas.length) catatan.push(`${lepas.length} baris tidak cocok dengan barang paket: ${lepas.slice(0, 3).join(", ")}${lepas.length > 3 ? ", …" : ""}`);
-    setBilah({ jenis: "hasil", judul: `${pasang.length} harga satuan ditempel (${cara})`, catatan });
+    // sel harga yang terisi menjadi blok terpilih
+    const idx = pasang.map((p) => p.i);
+    blok.tetapkan({ r: indeksBaris(nSpek, Math.min(...idx)), c: 5 }, { r: indeksBaris(nSpek, Math.max(...idx)), c: 5 }, true);
+    // tempel kolom harga berurutan cukup ditandai blok; selain itu tampilkan ringkasannya
+    setBilah(berurutan && !catatan.length ? null : { jenis: "hasil", judul: `${pasang.length} harga satuan ditempel (${cara})`, catatan });
   };
 
+  /** Ctrl/⌘+V: satu nilai → semua sel Harga Satuan di blok; beberapa sel → mulai barang di baris kiri-atas blok */
+  const tempelKe = (mentah: string, isian: Titik | null) => {
+    const { rentang: g, banyak } = blok.terkini();
+    const keBlok = !!g && (banyak || !isian);
+    if (!banyakSel(mentah)) {
+      if (!keBlok || !g) return false;
+      if (g.c1 > 5 || g.c2 < 5) onInfo?.("Hanya kolom Harga Satuan yang bisa diisi");
+      else if (!digitDari(nilaiTunggal(mentah))) onInfo?.("Salinan bukan angka harga");
+      else ubahRentang(g, "isi", () => digitDari(nilaiTunggal(mentah)));
+      return true;
+    }
+    const r = keBlok && g ? g.r1 : isian?.r;
+    if (r === undefined) return false;
+    const b = baris[r];
+    prosesTempel(mentah, b ? (b.jenis === "barang" ? b.i : b.i + 1) : 0);
+    return true;
+  };
   const onPasteCapture = (e: ClipboardEvent<HTMLTableElement>) => {
-    const el = e.target as HTMLInputElement;
-    if (el.tagName !== "INPUT" || el.dataset.i === undefined) return;
-    const mentah = e.clipboardData.getData("text/plain");
-    if (!banyakSel(mentah)) return;
+    const naTabel = e.target === ref.current;
+    const isian = naTabel ? null : titikIsian(e.target as HTMLElement);
+    if (!naTabel && !isian) return;
+    if (!tempelKe(e.clipboardData.getData("text/plain"), isian)) return;
     e.preventDefault();
     e.stopPropagation();
-    prosesTempel(mentah, Number(el.dataset.i));
   };
+  useClipboardTabel(
+    ref,
+    (data, potong) => salinKe(data, null, potong),
+    (teks) => tempelKe(teks, null),
+  );
   const tempelTombol = async () => {
     const teks = await bacaClipboard();
     if (!banyakSel(teks))
@@ -1071,6 +1791,99 @@ export function TabelBeli({
           : "Browser belum mengizinkan membaca salinan. Salin kolom harga di Excel, klik sel Harga Satuan barang pertama, lalu tekan ⌘V / Ctrl+V.",
       });
     prosesTempel(teks, 0);
+  };
+
+  /** pindah sel aktif; kolom selain Harga Satuan hanya-baca (dipilih dengan fokus di tabel) */
+  const pindahSel = (t: Titik) => {
+    if (t.c === 5 && baris[t.r]?.jenis === "barang" && fokus(t.r, "beli")) return;
+    blok.tetapkan(t);
+    if (document.activeElement !== ref.current) ref.current?.focus({ preventScroll: true });
+    blok.tunjukkan(t);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTableElement>) => {
+    const el = e.target as HTMLInputElement;
+    const naTabel = e.target === ref.current;
+    const isian = naTabel ? null : titikIsian(el);
+    if ((!naTabel && !isian) || e.nativeEvent.isComposing) return;
+    if (tombolUrung(e) || tombolUlang(e)) {
+      e.preventDefault();
+      return tombolUrung(e) ? urungkan() : ulangi();
+    }
+    const { pilih, rentang: g, banyak } = blok.terkini();
+    const aktif: Titik = isian ?? pilih?.a ?? { r: 0, c: 5 };
+    const siap = naTabel || banyak || !el.value || seluruh(el);
+    if (e.key === "Escape" && blok.adaSalinan()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return blok.hapusSalinan();
+    }
+    if (ARAH[e.key] && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && siap) {
+      e.preventDefault();
+      const [dr, dc] = ARAH[e.key];
+      return blok.perluas(dr, dc, aktif);
+    }
+    if (tombolSemua(e) && siap) {
+      e.preventDefault();
+      return blok.semua();
+    }
+    if (g && (banyak || naTabel)) {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        return void ubahRentang(g, "hapus", () => "");
+      }
+      if (banyak && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        return blok.kumpul(aktif);
+      }
+      if (banyak && (ARAH[e.key] || e.key === "Enter" || e.key === "Tab")) blok.kumpul(aktif);
+    }
+    if (naTabel) {
+      const gerak: [number, number] | undefined =
+        ARAH[e.key] && !e.shiftKey ? ARAH[e.key] : e.key === "Enter" ? [e.shiftKey ? -1 : 1, 0] : e.key === "Tab" ? [0, e.shiftKey ? -1 : 1] : undefined;
+      if (gerak && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        return pindahSel({ r: jepit(aktif.r + gerak[0], 0, baris.length - 1), c: jepit(aktif.c + gerak[1], 0, 6) });
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        blok.tetapkan(null);
+        ref.current?.blur();
+      }
+      return;
+    }
+    const i = Number(el.dataset.i);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      blok.tetapkan(null);
+      el.blur();
+    } else if (e.key === "F2") {
+      e.preventDefault();
+      el.setSelectionRange(el.value.length, el.value.length);
+    } else if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault(); // Enter jangan mengirim form
+      pindah(i, e.key === "Enter" && e.shiftKey ? -1 : 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      pindah(i, -1);
+    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      // di tepi teks (atau seluruh isi terpilih) panah kiri/kanan pindah ke sel sebelah seperti Excel
+      const kiri = e.key === "ArrowLeft";
+      const s = el.selectionStart ?? 0;
+      const t = el.selectionEnd ?? 0;
+      if (!(seluruh(el) || (kiri ? s === 0 && t === 0 : s === el.value.length && t === el.value.length))) return;
+      e.preventDefault();
+      pindahSel({ r: aktif.r, c: kiri ? 4 : 6 });
+    }
+  };
+  const onDoubleClick = (e: MouseEvent<HTMLTableElement>) => {
+    const input = isianDi((e.target as HTMLElement).closest<HTMLElement>("td[data-sr]"));
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   };
 
   return (
@@ -1099,7 +1912,23 @@ export function TabelBeli({
       </div>
       {bilah && <BilahTempel isi={bilah} onUrungkan={bilah.jenis === "hasil" ? urungkan : undefined} onTutup={() => setBilah(null)} />}
       <div className="grid-excel-wrap">
-        <table className="grid-excel" ref={ref} onKeyDown={onKeyDown} onPasteCapture={onPasteCapture} onFocus={() => riwayat.putus()}>
+        <table
+          className="grid-excel g-blok"
+          ref={ref}
+          tabIndex={-1}
+          onKeyDown={onKeyDown}
+          onPasteCapture={onPasteCapture}
+          onCopy={(e) => salinBlok(e, false)}
+          onCut={(e) => salinBlok(e, true)}
+          onPointerDown={blok.onPointerDown}
+          onMouseDown={blok.onMouseDown}
+          onDoubleClick={onDoubleClick}
+          onFocus={(e) => {
+            riwayat.putus();
+            blok.onFocus(e, titikIsian);
+          }}
+          onBlur={blok.onBlur}
+        >
           <colgroup>
             <col className="k-no" />
             <col className="k-uraian" />
@@ -1111,13 +1940,27 @@ export function TabelBeli({
           </colgroup>
           <thead>
             <tr>
-              <th className="g-no">No.</th>
-              <th>Uraian</th>
-              <th className="r">Jumlah</th>
-              <th>Satuan</th>
-              <th className="r">Harga HPS (Rp)</th>
-              <th className="r g-kunci">Harga Satuan (Rp)</th>
-              <th className="r">Jumlah (Rp)</th>
+              <th className={"g-no" + blok.kelasKolom(0)} data-hc={0} title="Pilih semua sel">
+                No.
+              </th>
+              <th data-hc={1} className={blok.kelasKolom(1)}>
+                Uraian
+              </th>
+              <th data-hc={2} className={"r" + blok.kelasKolom(2)}>
+                Jumlah
+              </th>
+              <th data-hc={3} className={blok.kelasKolom(3)}>
+                Satuan
+              </th>
+              <th data-hc={4} className={"r" + blok.kelasKolom(4)}>
+                Harga HPS (Rp)
+              </th>
+              <th data-hc={5} className={"r g-kunci" + blok.kelasKolom(5)}>
+                Harga Satuan (Rp)
+              </th>
+              <th data-hc={6} className={"r" + blok.kelasKolom(6)}>
+                Jumlah (Rp)
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1126,23 +1969,33 @@ export function TabelBeli({
               if (b.jenis === "spek")
                 return (
                   <tr key={`${b.i}-s${b.j}`} className="g-spek">
-                    <td className="g-no" />
-                    <td className="g-teks g-teks-spek" colSpan={3}>
+                    <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
+                    <td className={"g-teks g-teks-spek" + blok.kelas(r, 1, 3)} colSpan={3} {...atributSel(r, 1, 3)}>
                       - {x.spesifikasi[b.j]}
                     </td>
-                    <td colSpan={3} className="g-mati" />
+                    <td colSpan={3} className={"g-mati" + blok.kelas(r, 4, 6)} {...atributSel(r, 4, 6)} />
                   </tr>
                 );
               const h = Number(harga[b.i]) || 0;
               const diAtas = h > x.hargaHps;
               return (
                 <tr key={b.i} className="g-barang">
-                  <td className="g-no num">{b.i + 1}</td>
-                  <td className="g-teks">{x.uraian}</td>
-                  <td className="g-teks r num">{angka(x.jumlah)}</td>
-                  <td className="g-teks">{x.satuan}</td>
-                  <td className="g-teks r num g-redup">{angka(x.hargaHps)}</td>
-                  <td className={`g-sel r${diAtas ? " g-ingat" : ""}${!h ? " g-salah" : ""}`}>
+                  <td className={"g-no num" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" title="Pilih seluruh baris">
+                    {b.i + 1}
+                  </td>
+                  <td className={"g-teks" + blok.kelas(r, 1)} {...atributSel(r, 1)}>
+                    {x.uraian}
+                  </td>
+                  <td className={"g-teks r num" + blok.kelas(r, 2)} {...atributSel(r, 2)}>
+                    {angka(x.jumlah)}
+                  </td>
+                  <td className={"g-teks" + blok.kelas(r, 3)} {...atributSel(r, 3)}>
+                    {x.satuan}
+                  </td>
+                  <td className={"g-teks r num g-redup" + blok.kelas(r, 4)} {...atributSel(r, 4)}>
+                    {angka(x.hargaHps)}
+                  </td>
+                  <td className={`g-sel r${diAtas ? " g-ingat" : ""}${!h ? " g-salah" : ""}` + blok.kelas(r, 5)} {...atributSel(r, 5)}>
                     <InputRupiah
                       data-r={r}
                       data-c="beli"
@@ -1155,7 +2008,9 @@ export function TabelBeli({
                       title={diAtas ? "Di atas harga satuan HPS (boleh selama total pembelian tidak melebihi total HPS)" : undefined}
                     />
                   </td>
-                  <td className="g-hasil num">{h > 0 ? angka(x.jumlah * h) : ""}</td>
+                  <td className={"g-hasil num" + blok.kelas(r, 6)} {...atributSel(r, 6)}>
+                    {h > 0 ? angka(x.jumlah * h) : ""}
+                  </td>
                 </tr>
               );
             })}
@@ -1172,9 +2027,14 @@ export function TabelBeli({
         </table>
       </div>
       <p className="tabel-isian-petunjuk">
-        Isi kolom <b>Harga Satuan</b> sesuai nota (bawaan: harga HPS) · <kbd>Enter</kbd> barang berikutnya · tempel kolom harga atau tabel
-        nota/penawaran dari Excel dengan <kbd>Ctrl/⌘</kbd>+<kbd>V</kbd> — barisnya dicocokkan menurut nama barang · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd>{" "}
-        urungkan.
+        Isi kolom <b>Harga Satuan</b> sesuai nota (bawaan: harga HPS)
+        <span className="tip-mouse">
+          {" "}
+          · blok sel seperti Excel dengan seret mouse / <kbd>Shift</kbd>+panah · <kbd>Ctrl/⌘</kbd>+<kbd>V</kbd> tempel kolom harga atau tabel
+          nota/penawaran dari Excel (dicocokkan menurut nama barang); satu harga yang ditempel ke blok mengisi semua selnya ·{" "}
+          <kbd>Ctrl/⌘</kbd>+<kbd>C</kbd> salin · <kbd>Delete</kbd> kosongkan · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> urungkan
+        </span>
+        .
       </p>
     </div>
   );
@@ -1200,6 +2060,7 @@ export function TabelLampiran({
   centang?: boolean;
   onInfo?: (pesan: string) => void;
 }) {
+  const ref = useRef<HTMLTableElement>(null);
   const nSpek = item.map((x) => x.spesifikasi.length);
   const baris = susunBaris(nSpek);
   const satuan = (x: ItemPaket) => (harga === "beli" ? (x.harga ?? x.hargaHps) : x.hargaHps);
@@ -1208,6 +2069,37 @@ export function TabelLampiran({
   const adaKet = item.some((x) => x.ket.trim());
   const kolomSisa = (periksa ? 1 : 0) + (adaKet ? 1 : 0);
   const kolom = 4 + (harga ? 2 : 0) + kolomSisa;
+  const jenisKolom = ["no", "uraian", "jumlah", "satuan", ...(harga ? ["harga", "total"] : []), ...(periksa ? ["periksa"] : []), ...(adaKet ? ["ket"] : [])];
+  const kHarga = jenisKolom.indexOf("harga");
+  const kTotal = jenisKolom.indexOf("total");
+  const kPeriksa = jenisKolom.indexOf("periksa");
+  const kKet = jenisKolom.indexOf("ket");
+  const blok = useBlok(ref, baris.length, kolom - 1);
+  const nilaiSel = (r: number, c: number): string => {
+    const b = baris[r];
+    if (!b) return "";
+    const x = item[b.i];
+    if (b.jenis === "spek") return c === 1 ? `- ${x.spesifikasi[b.j]}` : "";
+    switch (jenisKolom[c]) {
+      case "no":
+        return String(b.i + 1);
+      case "uraian":
+        return x.uraian;
+      case "jumlah":
+        return String(x.jumlah);
+      case "satuan":
+        return x.satuan;
+      case "harga":
+        return String(satuan(x));
+      case "total":
+        return String(x.jumlah * satuan(x));
+      case "periksa":
+        return centang ? "√" : "";
+      case "ket":
+        return x.ket;
+    }
+    return "";
+  };
   const salinExcel = async () => {
     const ok = await salinTeks(
       tsvBarang(
@@ -1216,6 +2108,40 @@ export function TabelLampiran({
       ),
     );
     onInfo?.(ok ? `${item.length} barang/jasa disalin — tempel di Excel dengan ⌘V / Ctrl+V` : "Browser menolak menyalin ke clipboard");
+  };
+  const salinKe = (data: DataTransfer) => {
+    const { rentang: g } = blok.terkini();
+    if (!g) return false;
+    data.setData("text/plain", tsvRentang(g, nilaiSel));
+    blok.tandaiSalinan(g);
+    return true;
+  };
+  const onCopy = (e: ClipboardEvent<HTMLTableElement>) => {
+    if (salinKe(e.clipboardData)) e.preventDefault();
+  };
+  useClipboardTabel(ref, (data, potong) => !potong && salinKe(data));
+  const onKeyDown = (e: KeyboardEvent<HTMLTableElement>) => {
+    if (e.target !== ref.current) return;
+    const { pilih, banyak } = blok.terkini();
+    const aktif = pilih?.a ?? { r: 0, c: 1 };
+    const gerak: [number, number] | undefined = ARAH[e.key] ? ARAH[e.key] : e.key === "Enter" ? [e.shiftKey ? -1 : 1, 0] : e.key === "Tab" ? [0, e.shiftKey ? -1 : 1] : undefined;
+    if (gerak && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (ARAH[e.key] && e.shiftKey) return blok.perluas(gerak[0], gerak[1], aktif);
+      const t = { r: jepit(aktif.r + gerak[0], 0, baris.length - 1), c: jepit(aktif.c + gerak[1], 0, kolom - 1) };
+      blok.tetapkan(t);
+      blok.tunjukkan(t);
+    } else if (tombolSemua(e)) {
+      e.preventDefault();
+      blok.semua();
+    } else if (e.key === "Escape" && (blok.adaSalinan() || pilih)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (blok.adaSalinan()) return blok.hapusSalinan();
+      if (banyak) return blok.kumpul(aktif);
+      blok.tetapkan(null);
+      ref.current?.blur();
+    }
   };
   return (
     <div className="full tabel-isian">
@@ -1233,7 +2159,7 @@ export function TabelLampiran({
           </small>
         </div>
         <div className="tik-alat">
-          <button type="button" className="btn soft sm" onClick={salinExcel} title="Salin daftar ini untuk ditempel di Excel">
+          <button type="button" className="btn soft sm" onClick={salinExcel} title="Salin seluruh daftar untuk ditempel di Excel (atau blok sel lalu ⌘C / Ctrl+C)">
             <Icon name="copy" />
             <span>
               Salin<span className="tik-lengkap"> ke Excel</span>
@@ -1242,7 +2168,17 @@ export function TabelLampiran({
         </div>
       </div>
       <div className="grid-excel-wrap">
-        <table className="grid-excel g-baca">
+        <table
+          className="grid-excel g-baca g-blok"
+          ref={ref}
+          tabIndex={-1}
+          onKeyDown={onKeyDown}
+          onCopy={onCopy}
+          onPointerDown={blok.onPointerDown}
+          onMouseDown={blok.onMouseDown}
+          onFocus={(e) => blok.onFocus(e, () => null)}
+          onBlur={blok.onBlur}
+        >
           <colgroup>
             <col className="k-no" />
             <col className="k-uraian" />
@@ -1255,39 +2191,87 @@ export function TabelLampiran({
           </colgroup>
           <thead>
             <tr>
-              <th className="g-no">No.</th>
-              <th>Nama Barang/Jasa</th>
-              <th className="r">Jumlah</th>
-              <th>Satuan</th>
-              {harga && <th className="r">Harga Satuan (Rp)</th>}
-              {harga && <th className="r">Total Jumlah (Rp)</th>}
-              {periksa && <th className="g-tengah">Memenuhi</th>}
-              {adaKet && <th>Ket</th>}
+              <th className={"g-no" + blok.kelasKolom(0)} data-hc={0} title="Pilih semua sel">
+                No.
+              </th>
+              <th data-hc={1} className={blok.kelasKolom(1)}>
+                Nama Barang/Jasa
+              </th>
+              <th data-hc={2} className={"r" + blok.kelasKolom(2)}>
+                Jumlah
+              </th>
+              <th data-hc={3} className={blok.kelasKolom(3)}>
+                Satuan
+              </th>
+              {harga && (
+                <th data-hc={kHarga} className={"r" + blok.kelasKolom(kHarga)}>
+                  Harga Satuan (Rp)
+                </th>
+              )}
+              {harga && (
+                <th data-hc={kTotal} className={"r" + blok.kelasKolom(kTotal)}>
+                  Total Jumlah (Rp)
+                </th>
+              )}
+              {periksa && (
+                <th data-hc={kPeriksa} className={"g-tengah" + blok.kelasKolom(kPeriksa)}>
+                  Memenuhi
+                </th>
+              )}
+              {adaKet && (
+                <th data-hc={kKet} className={blok.kelasKolom(kKet)}>
+                  Ket
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {baris.map((b) => {
+            {baris.map((b, r) => {
               const x = item[b.i];
               if (b.jenis === "spek")
                 return (
                   <tr key={`${b.i}-s${b.j}`} className="g-spek">
-                    <td className="g-no" />
-                    <td className="g-teks g-teks-spek" colSpan={3}>
+                    <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
+                    <td className={"g-teks g-teks-spek" + blok.kelas(r, 1, 3)} colSpan={3} {...atributSel(r, 1, 3)}>
                       - {x.spesifikasi[b.j]}
                     </td>
-                    {kolom > 4 && <td colSpan={kolom - 4} className="g-mati" />}
+                    {kolom > 4 && <td colSpan={kolom - 4} className={"g-mati" + blok.kelas(r, 4, kolom - 1)} {...atributSel(r, 4, kolom - 1)} />}
                   </tr>
                 );
               return (
                 <tr key={b.i} className="g-barang">
-                  <td className="g-no num">{b.i + 1}</td>
-                  <td className="g-teks">{x.uraian}</td>
-                  <td className="g-teks r num">{angka(x.jumlah)}</td>
-                  <td className="g-teks">{x.satuan}</td>
-                  {harga && <td className="g-teks r num">{angka(satuan(x))}</td>}
-                  {harga && <td className="g-hasil num">{angka(x.jumlah * satuan(x))}</td>}
-                  {periksa && <td className="g-teks g-tengah g-centang">{centang ? "√" : ""}</td>}
-                  {adaKet && <td className="g-teks">{x.ket}</td>}
+                  <td className={"g-no num" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" title="Pilih seluruh baris">
+                    {b.i + 1}
+                  </td>
+                  <td className={"g-teks" + blok.kelas(r, 1)} {...atributSel(r, 1)}>
+                    {x.uraian}
+                  </td>
+                  <td className={"g-teks r num" + blok.kelas(r, 2)} {...atributSel(r, 2)}>
+                    {angka(x.jumlah)}
+                  </td>
+                  <td className={"g-teks" + blok.kelas(r, 3)} {...atributSel(r, 3)}>
+                    {x.satuan}
+                  </td>
+                  {harga && (
+                    <td className={"g-teks r num" + blok.kelas(r, kHarga)} {...atributSel(r, kHarga)}>
+                      {angka(satuan(x))}
+                    </td>
+                  )}
+                  {harga && (
+                    <td className={"g-hasil num" + blok.kelas(r, kTotal)} {...atributSel(r, kTotal)}>
+                      {angka(x.jumlah * satuan(x))}
+                    </td>
+                  )}
+                  {periksa && (
+                    <td className={"g-teks g-tengah g-centang" + blok.kelas(r, kPeriksa)} {...atributSel(r, kPeriksa)}>
+                      {centang ? "√" : ""}
+                    </td>
+                  )}
+                  {adaKet && (
+                    <td className={"g-teks" + blok.kelas(r, kKet)} {...atributSel(r, kKet)}>
+                      {x.ket}
+                    </td>
+                  )}
                 </tr>
               );
             })}

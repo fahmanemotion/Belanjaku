@@ -1574,6 +1574,38 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .grid-excel thead th { padding: 4px 6px; white-space: normal; line-height: 1.2; }
 }
 
+/* Blok sel seperti Excel: sorotan blok, sel aktif, judul kolom & nomor baris, garis putus-putus blok yang disalin */
+.grid-excel.g-blok { --g-blok: color-mix(in srgb, var(--accent) 10%, transparent); }
+.grid-excel.g-blok:focus, .grid-excel.g-blok:focus-visible { outline: none; }
+.grid-excel.g-blok tbody td[data-sr], .grid-excel.g-blok tbody td[data-sr] input:not(:focus) { cursor: cell; }
+.grid-excel.g-blok thead th[data-hc], .grid-excel.g-blok tbody td[data-penuh] { cursor: pointer; user-select: none; -webkit-user-select: none; }
+@media (hover: hover) {
+  .grid-excel.g-blok thead th[data-hc]:hover, .grid-excel.g-blok tbody td[data-penuh]:hover { color: var(--ink); }
+}
+.grid-excel td.g-pilih, .grid-excel td.g-salin { position: relative; }
+.grid-excel td.g-pilih { background-image: linear-gradient(var(--g-blok), var(--g-blok)); }
+.grid-excel td.g-pilih.g-aktif { background-image: none; }
+.grid-excel td.g-aktif input::selection { background: transparent; }
+.grid-excel td.g-pilih::after, .grid-excel td.g-salin::before { content: ""; position: absolute; inset: 0; z-index: 2; border: 0 solid var(--accent); pointer-events: none; }
+.grid-excel td.g-pa::after { border-top-width: 2px; }
+.grid-excel td.g-pb::after { border-bottom-width: 2px; }
+.grid-excel td.g-pki::after { border-left-width: 2px; }
+.grid-excel td.g-pka::after { border-right-width: 2px; }
+.grid-excel td.g-salin::before { border-style: dashed; }
+.grid-excel td.g-sa::before { top: 3px; border-top-width: 2px; }
+.grid-excel td.g-sb::before { bottom: 3px; border-bottom-width: 2px; }
+.grid-excel td.g-ski::before { left: 3px; border-left-width: 2px; }
+.grid-excel td.g-ska::before { right: 3px; border-right-width: 2px; }
+.grid-excel td.g-pilih.g-salin::before { display: none; }
+.grid-excel td.g-pilih.g-salin::after { border-style: dashed; }
+.grid-excel thead th.g-pilih-kolom, .grid-excel tbody td.g-no.g-pilih-baris { background-color: color-mix(in srgb, var(--accent) 16%, var(--sub)); color: var(--accent); }
+/* petunjuk tabel: pintasan mouse & keyboard hanya untuk laptop/PC; layar sentuh cukup ketuk sel */
+.tabel-isian-petunjuk .tip-sentuh { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .tabel-isian-petunjuk .tip-mouse { display: none; }
+  .tabel-isian-petunjuk .tip-sentuh { display: inline; }
+}
+
 /* Tempel dari Excel: bilah hasil & dialog atur kolom/baris */
 .bilah-tempel { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--good-bg); color: var(--ink); font-size: 12.5px; }
 .bilah-tempel > svg { flex: none; margin-top: 1px; color: var(--good); }
