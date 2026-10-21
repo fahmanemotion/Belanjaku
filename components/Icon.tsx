@@ -260,6 +260,31 @@ const PATHS = {
       <path d="M4 17c4 0 5-1.5 7-5.5S14.5 5 20 5" />
     </>
   ),
+  clipboard: (
+    <>
+      <rect x="8" y="2.5" width="8" height="4" rx="1.2" />
+      <path d="M16 4.5h1.5A2.5 2.5 0 0 1 20 7v12a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19V7a2.5 2.5 0 0 1 2.5-2.5H8" />
+      <path d="M8.5 12h7M8.5 16h4.5" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="12" height="12" rx="2.5" />
+      <path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof PATHS;

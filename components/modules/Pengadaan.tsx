@@ -943,7 +943,7 @@ function FormPesanan({ p, onClose }: { p: Paket; onClose: () => void }) {
         <input inputMode="numeric" className="num" value={batas} onChange={(e) => setBatas(e.target.value.replace(/\D/g, "").slice(0, 3))} />
         <small className="isian-catatan">Dicetak: &ldquo;paling lambat {Number(batas) || "…"} Hari Setelah Menerima Surat Pesanan ini&rdquo;</small>
       </Field>
-      <TabelLampiran judul="Barang/jasa yang dipesan (dari HPS)" item={p.item} harga="hps" ppn={p.ppn} />
+      <TabelLampiran judul="Barang/jasa yang dipesan (dari HPS)" item={p.item} harga="hps" ppn={p.ppn} onInfo={toast} />
     </Modal>
   );
 }
@@ -1108,7 +1108,7 @@ function FormKwitansi({ p, onClose }: { p: Paket; onClose: () => void }) {
       <Field label="Tanggal BAST">
         <input type="date" value={bastTgl} min={minimal} onChange={(e) => setBastTgl(e.target.value)} />
       </Field>
-      <TabelLampiran judul="Lampiran Kwitansi, BAP & BAST" item={p.item} harga="beli" ppn={p.nota?.ppn ?? p.ppn} centang={centang} />
+      <TabelLampiran judul="Lampiran Kwitansi, BAP & BAST" item={p.item} harga="beli" ppn={p.nota?.ppn ?? p.ppn} centang={centang} onInfo={toast} />
       <label className="full cek-baris">
         <input type="checkbox" checked={centang} onChange={(e) => setCentang(e.target.checked)} />
         Beri tanda √ pada kolom MEMENUHI di Lampiran BAP (kosongkan bila diisi tangan)

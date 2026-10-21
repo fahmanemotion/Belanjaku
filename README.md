@@ -74,10 +74,31 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
     (di baris terakhir yang sudah terisi menambah baris baru); panah pindah sel; `Alt/⌥+Enter` (atau `Shift+Enter`) menambah baris
     spesifikasi; `Enter` di baris spesifikasi kosong mengakhiri daftar spesifikasi; `Backspace` di baris spesifikasi kosong menghapusnya;
     `F2` menyunting isi sel; `Esc` keluar dari sel. Tombol **+** / tempat sampah di ujung baris menambah spesifikasi / menghapus baris.
-  - **Tempel dari Excel / Google Sheets** (`Ctrl/⌘+V`) mulai dari sel yang dipilih: baris judul kolom, kolom No, dan baris
-    JUMLAH / PPN / TOTAL / TERBILANG dilewati; baris yang diawali "-" (atau tanpa jumlah, satuan, dan harga) menjadi spesifikasi barang
-    di atasnya; isi sel berbaris banyak dipecah menjadi uraian + spesifikasi; "Rp 85.000" terbaca 85.000. Satu kolom (mis. Jumlah)
-    juga bisa ditempel ke beberapa baris sekaligus. Di Nota Pembelian, satu kolom harga atau baris nota lengkap bisa ditempel.
+  - **Tempel dari catatan Excel / draft RAB / Google Sheets.** Blok baris-baris barang di Excel — boleh ikut judul dokumen, judul
+    kolom, baris kelompok, subtotal, PPN, total, terbilang, dan tanda tangan — salin, lalu tempel (`Ctrl/⌘+V`) di sel mana pun di
+    tabel atau klik **Tempel dari Excel** (`lib/tempelExcel.ts`):
+    - kolom dikenali dari **judul kolomnya dalam urutan apa pun** — Uraian/Nama Barang/Item, Spesifikasi/Merk, Volume/Vol/Qty/Banyaknya,
+      Satuan/Sat/Unit, Harga Satuan/Harga/@/Unit Price, Jumlah (Rp)/Total/Jumlah Biaya/Amount, Keterangan/Ket, No — termasuk judul
+      dua baris, baris nomor kolom (1, 2, 3 …), dan sel gabungan seperti sheet *HPS NODIN*. Tanpa judul, arti kolom ditebak dari isinya
+      (jumlah × harga = total, satuan umum, kolom teks paling kiri = uraian); salinan yang susunannya sama dengan tabel aplikasi
+      ditempel berurutan mulai dari kolom yang dipilih seperti di Excel;
+    - baris judul dokumen, kelompok (A, B, I, II, "1" yang punya anak "1.1", kode akun 521211 …), subtotal, JUMLAH / PPN / TOTAL /
+      TERBILANG, dan judul kolom yang berulang dilewati; baris "- …" atau baris tanpa angka tepat di bawah barang menjadi
+      spesifikasinya; isi kolom Spesifikasi dan sel berbaris banyak juga dipecah menjadi baris spesifikasi;
+    - angka "Rp1.500.000,-", "1,500,000.00", dan volume bersatuan "10 pcs" / "5 org x 2 hr" terbaca; harga satuan dihitung dari
+      total ÷ jumlah bila kolom harga satuan tidak ada; salinan yang memuat baris PPN mencentang PPN 11%;
+    - hasilnya langsung masuk mulai baris yang dipilih (seperti tempel di Excel; isian yang tidak dimuat salinan tetap); bila kursor
+      tidak di sel mana pun, ditambahkan di bawah barang yang ada. **Bilah hasil** di atas tabel menyebut kolom yang dikenali dan
+      baris yang dilewati, dengan tombol **Atur kolom & baris…** (ubah arti tiap kolom, jenis tiap baris — barang / spesifikasi /
+      lewati — dan cara memasukkan: tambahkan di bawah, timpa mulai baris tertentu, atau ganti semua) dan **Urungkan**. Salinan
+      yang belum meyakinkan (mis. tanpa kolom angka) langsung membuka dialog itu; barang hasil tempel yang belum lengkap ditandai merah;
+    - satu kolom saja (mis. kolom Jumlah atau Harga) bisa ditempel ke beberapa baris sekaligus.
+  - **Urungkan / ulangi** seperti Excel: `Ctrl/⌘+Z`, `Ctrl/⌘+Shift+Z` atau `Ctrl+Y`, atau tombol panah di atas tabel.
+  - **Salin ke Excel** menyalin tabel (judul kolom, spesifikasi, JUMLAH/PPN/TOTAL) untuk ditempel di Excel — juga ada di lampiran
+    Surat Pesanan dan Kwitansi. Hasil salinan bisa ditempel kembali ke tabel.
+  - **Nota Pembelian**: kolom harga atau tabel nota/penawaran penyedia bisa ditempel; barisnya dicocokkan dengan barang paket
+    **menurut nama** (urutan boleh berbeda), bila tidak bisa menurut urutan; baris yang tidak cocok dan jumlah yang berbeda dengan
+    HPS disebutkan di bilah hasil.
   - Baris kosong tidak ikut disimpan. Bila simpan gagal, sel yang belum benar ditandai merah dan kursor pindah ke sel pertama.
     Batas sama dengan database: **50 barang/jasa**, 20 baris spesifikasi per barang; harga di atas harga satuan HPS di Nota
     Pembelian ditandai kuning (boleh selama total tidak melebihi HPS).
@@ -337,7 +358,8 @@ belanjaku-pip/
 │   ├── RekapBelanja.tsx    # daftar berceklist + riwayat rekap (dipakai Pencairan & Pengesahan)
 │   ├── CetakPengadaan.tsx  # 10 dokumen pengadaan A4 (format berkas Excel NODIN_KWITANSI)
 │   ├── InputNomor.tsx      # isian nomor dokumen berpola (PL.102/…)
-│   ├── TabelBarang.tsx     # tabel barang/jasa bergaya Excel di form pengadaan (keyboard, tempel dari Excel)
+│   ├── TabelBarang.tsx     # tabel barang/jasa bergaya Excel di form pengadaan (keyboard, tempel, urungkan, salin)
+│   ├── TempelExcel.tsx     # bilah hasil tempel & dialog atur kolom/baris salinan Excel
 │   ├── Combobox.tsx, CetakKegiatan.tsx, UnggahFaDetail.tsx, KolomKegiatan.tsx, Icon.tsx, Logo.tsx, ui.tsx
 │   └── modules/            # satu file per modul
 ├── lib/
@@ -348,6 +370,7 @@ belanjaku-pip/
 │   ├── mak.ts              # tipe & penyusun data MAK / Kertas Kerja POK
 │   ├── faDetail.ts         # pembaca file FA Detail (.xlsx) SAKTI di browser + validasi
 │   ├── pengadaan.ts        # tahap, jumlah & PPN, terbilang, tanggal dalam huruf, pola nomor dokumen pengadaan
+│   ├── tempelExcel.ts      # pengurai salinan Excel/draft RAB → barang/jasa (judul kolom, kelompok, spesifikasi, angka)
 │   ├── gambarDokumen.ts    # kop surat & logo kaki halaman dokumen pengadaan (KAN, SGS) sebagai data URI
 │   ├── data.ts             # konstanta & DATA CONTOH dashboard
 │   ├── types.ts            # tipe data
@@ -377,6 +400,7 @@ belanjaku-pip/
 | *"Nota dinas … tidak bisa diubah karena Surat Pesanan sudah terbit"* | Minta Pejabat Pengadaan **membatalkan** Surat Pesanan (isiannya tetap tersimpan), perbaiki Nota Dinas, lalu SP diterbitkan ulang. |
 | Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default** (bukan *Minimum*/*Kustom*). Chrome & Edge tidak mencetak tanggal/URL bila margin Default; di Safari / Firefox matikan **Header dan footer**. |
 | NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
-| Daftar dari Excel tidak masuk ke kolom yang benar saat ditempel | Klik dulu sel tempat salinan dimulai: salinan yang dimulai dari kolom **Uraian** (atau **No.**) ditempel di sel Uraian, salinan satu kolom angka di sel kolom itu. Baris yang tidak dikenali bisa diperbaiki langsung di tabel. |
+| Daftar dari Excel masuk ke kolom yang salah saat ditempel | Klik **Atur kolom & baris…** di bilah hasil tempel, pilih arti kolom yang benar (atau ubah jenis baris), lalu **Masukkan** — atau **Urungkan** (`Ctrl/⌘+Z`). Ikut menyalin baris judul kolom (Uraian, Volume, Satuan, Harga Satuan, Jumlah) membuat pengenalan otomatis paling tepat. |
+| Tombol **Tempel dari Excel** tidak membaca salinan | Browser meminta izin membaca clipboard — pilih **Izinkan**. Bila izin ditolak, klik sel Uraian di tabel lalu tekan `⌘V` / `Ctrl+V`. |
 | Form pengadaan tidak tertutup saat menekan Esc | Disengaja: setelah ada isian, Esc / klik di luar tidak menutup form agar daftar barang tidak hilang. Tutup lewat **Batal** atau **×**. |
 | Kop surat / logo tidak tampil atau tampil sebagai ikon rusak | Sejak v23 gambar tertanam di `lib/gambarDokumen.ts`. Pastikan file itu ikut ter-push dan deploy Vercel terbaru sudah selesai, lalu muat ulang halaman (⌘⇧R). |

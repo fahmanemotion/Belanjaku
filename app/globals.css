@@ -1477,9 +1477,14 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
    ===================================================================== */
 .modal.tabel { width: min(1120px, 100%); }
 .tabel-isian { display: grid; gap: 8px; min-width: 0; }
-.tabel-isian-kepala { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--ink); }
+.tabel-isian-kepala { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 8px 12px; font-size: 13px; color: var(--ink); }
+.tik-judul { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .tabel-isian-kepala small { color: var(--muted); font-size: 12px; font-weight: 500; }
 .tabel-isian-kepala small b { color: var(--ink); font-weight: 700; }
+.tik-alat { display: flex; flex-wrap: wrap; gap: 6px; }
+.tik-alat .btn.sm { padding: 6px 12px; font-size: 12.5px; gap: 6px; }
+.tik-alat .btn svg { width: 15px; height: 15px; }
+.tik-alat .btn.sm.ikon { padding: 6px 8px; }
 .grid-excel-wrap { max-height: min(60vh, 600px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); scroll-padding-top: 34px; }
 .grid-excel { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; color: var(--ink); }
 .grid-excel.g-baca { min-width: 620px; }
@@ -1567,4 +1572,58 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .form .grid-excel input:not([type="checkbox"]) { font-size: 16px; }
   .form .grid-excel .g-spek-isi input:not([type="checkbox"]) { font-size: 16px; }
   .grid-excel thead th { padding: 4px 6px; white-space: normal; line-height: 1.2; }
+}
+
+/* Tempel dari Excel: bilah hasil & dialog atur kolom/baris */
+.bilah-tempel { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--good-bg); color: var(--ink); font-size: 12.5px; }
+.bilah-tempel > svg { flex: none; margin-top: 1px; color: var(--good); }
+.bilah-tempel.info { background: var(--info-bg); }
+.bilah-tempel.info > svg { color: var(--info); }
+.bt-isi { flex: 1 1 0; min-width: 0; display: grid; gap: 3px; }
+.bt-isi b { font-size: 13px; line-height: 1.4; }
+.bt-isi small { color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.bt-isi .bt-label { font-weight: 700; color: var(--ink); }
+.bt-isi .bt-catatan { color: color-mix(in srgb, var(--warn) 72%, var(--ink)); font-weight: 600; }
+.bt-aksi { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; }
+.bt-aksi .btn.sm { padding: 6px 12px; font-size: 12.5px; gap: 6px; background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.bt-aksi .btn svg { width: 15px; height: 15px; }
+.bt-aksi .g-ib { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.bt-aksi .g-ib:hover { background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--ink); }
+.scrim.scrim-tempel { z-index: 55; }
+.modal.tempel-dialog { display: flex; flex-direction: column; gap: 10px; width: min(1180px, 100%); }
+.modal.tempel-dialog > p { margin: 0; }
+.tempel-ringkas { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 12px; border-radius: 12px; background: var(--sub); color: var(--muted); font-size: 12.5px; }
+.tempel-ringkas b { color: var(--ink); }
+.tempel-ringkas .tr-ingat { color: color-mix(in srgb, var(--warn) 72%, var(--ink)); font-weight: 600; }
+.tempel-ringkas .tr-salah { color: var(--bad); font-weight: 600; }
+.grid-excel-wrap.tempel-wrap { max-height: min(50vh, 520px); }
+.grid-excel.tempel-tabel { width: max-content; min-width: 100%; table-layout: auto; font-size: 12.5px; }
+.grid-excel.tempel-tabel th, .grid-excel.tempel-tabel td { height: auto; max-width: 280px; padding: 5px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-excel.tempel-tabel thead th { vertical-align: top; text-transform: none; }
+.tempel-tabel select { max-width: 180px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tempel-tabel thead small { display: block; max-width: 220px; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 11px; font-weight: 600; text-overflow: ellipsis; }
+.tempel-tabel th.tt-abai select { color: var(--muted); font-weight: 500; }
+.tempel-tabel td.tt-abai { color: var(--muted); opacity: 0.55; }
+.grid-excel.tempel-tabel .tt-jenis { position: sticky; left: 0; background: var(--panel); }
+.grid-excel.tempel-tabel thead th.tt-jenis { z-index: 4; background: var(--sub); }
+.grid-excel.tempel-tabel td.tt-jenis { z-index: 1; }
+.tempel-tabel td.tt-jenis small { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+.tempel-tabel tr.tt-barang td.tt-jenis select { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); }
+.tempel-tabel tr.tt-spek td.tt-jenis select { border-color: color-mix(in srgb, var(--info) 55%, var(--line)); }
+.tempel-tabel tr.tt-spek td:not(.tt-jenis) { color: var(--muted); }
+.tempel-tabel tr.tt-lewati td:not(.tt-jenis) { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.tempel-tabel .tt-lagi { color: var(--muted); }
+.tempel-tempat { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 8px 12px 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; }
+.tempel-tempat legend { padding: 0 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.tempel-tempat label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.tempel-tempat input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.modal.tempel-dialog .mfoot { align-items: center; margin-top: 2px; }
+.tempel-salah { margin-right: auto; color: var(--bad); font-size: 12.5px; font-weight: 600; }
+@media (max-width: 767px) {
+  .bilah-tempel { flex-wrap: wrap; }
+  .bt-aksi { width: 100%; padding-left: 26px; }
+  .tik-alat { width: 100%; }
+  .tik-lengkap { display: none; }
+  .modal.tempel-dialog { width: 100%; }
+  .grid-excel-wrap.tempel-wrap { max-height: 46vh; }
 }
