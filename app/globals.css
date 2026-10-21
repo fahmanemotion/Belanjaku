@@ -1191,26 +1191,11 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .tautan { padding: 0; font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .isian-catatan .mono { font-size: 11px; color: var(--ink); word-break: break-all; }
 
-/* Daftar barang HPS */
-.daftar-item { display: grid; gap: 10px; }
-.daftar-item-kepala { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--ink); }
-.daftar-item-kepala small { color: var(--muted); font-weight: 500; }
-.kartu-item { margin: 0; padding: 12px 14px 12px; border: 1px solid var(--line); border-radius: 16px; min-width: 0; }
-.kartu-item legend { padding: 0 6px; font-size: 12px; font-weight: 700; color: var(--accent); }
-.kartu-item-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.kartu-item-grid .lebar { grid-column: span 2; }
-.kartu-item-kaki { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
-.kartu-item-kaki b { color: var(--ink); }
-.tambah-item { justify-self: start; }
 .form label.cek-baris { flex-direction: row; align-items: center; gap: 10px; color: var(--ink); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .form label.cek-baris input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
 .form label.cek-baris.sejajar { align-self: end; padding-bottom: 10px; }
 .terbilang-ringkas { display: block; font-size: 12px; font-style: italic; color: var(--muted); line-height: 1.4; }
 .form .peringatan-isian { grid-column: 1 / -1; margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-bg); color: color-mix(in srgb, var(--warn) 70%, var(--ink)); font-size: 12.5px; font-weight: 600; }
-.baris-harga { display: grid; grid-template-columns: minmax(0, 1fr) 200px 130px; align-items: end; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
-.baris-harga > div b { display: block; font-size: 13.5px; color: var(--ink); }
-.baris-harga > div small { font-size: 12px; color: var(--muted); }
-.baris-harga-jumlah { padding-bottom: 10px; text-align: right; font-weight: 700; color: var(--ink); font-size: 13px; }
 
 /* Ringkasan alur 4 tahap */
 .alur-paket { list-style: none; margin: 0 0 var(--gap); padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; counter-reset: none; }
@@ -1406,10 +1391,6 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .alur-kartu { padding: 12px; gap: 10px; }
   .alur-no { width: 26px; height: 26px; border-radius: 8px; font-size: 13px; }
   .alur-isi b { font-size: 14px; }
-  .kartu-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kartu-item-grid .lebar { grid-column: 1 / -1; }
-  .baris-harga { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .baris-harga > div { grid-column: 1 / -1; }
   .rinci > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .dialog-aksi .btn { padding: 8px 10px; }
   .dialog-aksi .teks-lebar { display: none; }
@@ -1489,4 +1470,101 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 }
 @media print {
   .pilih-dana, .di-tabel-lain { display: none; }
+}
+
+/* =====================================================================
+   Tabel barang/jasa bergaya Excel (form Nota Dinas & HPS s.d. Kwitansi, BAP & BAST)
+   ===================================================================== */
+.modal.tabel { width: min(1120px, 100%); }
+.tabel-isian { display: grid; gap: 8px; min-width: 0; }
+.tabel-isian-kepala { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--ink); }
+.tabel-isian-kepala small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.tabel-isian-kepala small b { color: var(--ink); font-weight: 700; }
+.grid-excel-wrap { max-height: min(60vh, 600px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); scroll-padding-top: 34px; }
+.grid-excel { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; color: var(--ink); }
+.grid-excel.g-baca { min-width: 620px; }
+.grid-excel col.k-no { width: 44px; }
+.grid-excel col.k-jumlah { width: 82px; }
+.grid-excel col.k-satuan { width: 104px; }
+.grid-excel col.k-harga { width: 140px; }
+.grid-excel col.k-total { width: 150px; }
+.grid-excel col.k-ket { width: 128px; }
+.grid-excel col.k-aksi { width: 62px; }
+.grid-excel col.k-periksa { width: 96px; }
+.grid-excel th, .grid-excel td { height: 34px; padding: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.grid-excel tr > :last-child { border-right: 0; }
+.grid-excel thead th { position: sticky; top: 0; z-index: 3; padding: 0 8px; background: var(--sub); color: var(--muted); font-size: 12px; font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid-excel .r { text-align: right; }
+.grid-excel .g-tengah { text-align: center; }
+.grid-excel th.g-kunci { color: var(--accent); }
+/* kolom nomor seperti kepala baris Excel; menyala pada baris yang sedang diisi */
+.grid-excel td.g-no, .grid-excel th.g-no { background: var(--sub); color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
+.grid-excel tbody tr:focus-within td.g-no { background: color-mix(in srgb, var(--accent) 16%, var(--sub)); color: var(--accent); }
+.grid-excel td.g-sel { position: relative; background: var(--panel); }
+.grid-excel td.g-sel:focus-within { z-index: 1; box-shadow: inset 0 0 0 2px var(--accent); }
+.form .grid-excel input:not([type="checkbox"]) { display: block; width: 100%; height: 33px; min-width: 0; padding: 0 8px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font-size: 13.5px; font-weight: 500; }
+.grid-excel input:focus, .grid-excel input:focus-visible { outline: none; }
+.grid-excel td.r input { text-align: right; }
+.grid-excel input::placeholder { color: var(--muted); font-weight: 400; opacity: 0.75; }
+.grid-excel td.g-hasil { padding: 0 8px; background: color-mix(in srgb, var(--sub) 55%, var(--panel)); font-weight: 600; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid-excel td.g-teks { padding: 7px 8px; overflow-wrap: anywhere; line-height: 1.35; }
+.grid-excel td.g-redup { color: var(--muted); }
+.grid-excel td.g-centang { font-weight: 700; }
+.grid-excel td.g-mati { background: color-mix(in srgb, var(--sub) 45%, var(--panel)); }
+/* baris spesifikasi "- …" di bawah uraian */
+.grid-excel tr.g-spek td { height: 30px; }
+.grid-excel .g-spek-isi { display: flex; align-items: center; padding-left: 12px; }
+.grid-excel .g-poin { flex: none; color: var(--muted); font-weight: 700; }
+.form .grid-excel .g-spek-isi input:not([type="checkbox"]) { flex: 1; height: 29px; padding-left: 6px; font-size: 13px; }
+.grid-excel td.g-teks-spek { padding: 5px 8px 5px 14px; color: var(--muted); font-size: 12.5px; }
+/* sel wajib yang belum benar (setelah simpan gagal) dan harga di atas HPS */
+.grid-excel td.g-salah { background: var(--bad-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 55%, transparent); }
+.grid-excel td.g-salah:focus-within { box-shadow: inset 0 0 0 2px var(--bad); }
+.grid-excel td.g-ingat { background: var(--warn-bg); }
+/* tombol baris: tambah spesifikasi & hapus */
+.grid-excel td.g-aksi, .grid-excel th.g-aksi { text-align: center; white-space: nowrap; background: var(--panel); }
+.grid-excel thead th.g-aksi { background: var(--sub); }
+.grid-excel .g-ib { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--muted); }
+.grid-excel .g-ib:hover { background: var(--sub); color: var(--ink); }
+.grid-excel .g-ib.bahaya:hover { background: var(--bad-bg); color: var(--bad); }
+@media (hover: hover) {
+  .grid-excel td.g-aksi .g-ib { opacity: 0.4; transition: opacity 0.12s; }
+  .grid-excel tr:hover td.g-aksi .g-ib, .grid-excel tr:focus-within td.g-aksi .g-ib, .grid-excel td.g-aksi .g-ib:focus-visible { opacity: 1; }
+}
+/* JUMLAH · PPN 11% · TOTAL · Terbilang */
+.grid-excel tfoot td { height: 32px; padding: 0 8px; background: var(--sub); font-weight: 700; }
+.grid-excel tfoot td.g-label { text-align: center; font-size: 12px; letter-spacing: 0.03em; }
+.grid-excel tfoot td.g-angka { text-align: right; white-space: nowrap; }
+.grid-excel tfoot tr.g-redup td { color: var(--muted); }
+.grid-excel tfoot tr.g-total td { background: color-mix(in srgb, var(--accent) 8%, var(--sub)); }
+.grid-excel tfoot tr.g-total td.g-angka { color: var(--accent); font-size: 14px; }
+.grid-excel tfoot tr.g-banding td { color: var(--muted); }
+.grid-excel tfoot tr.g-lebih td { background: var(--bad-bg); color: var(--bad); }
+.grid-excel tfoot td.g-terbilang { height: auto; padding: 8px; font-weight: 500; text-align: left; line-height: 1.4; }
+.grid-excel tfoot td.g-terbilang i { color: var(--muted); }
+.grid-excel tfoot tr:last-child td { border-bottom: 0; }
+.form .grid-excel label.g-ppn { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; color: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.form .grid-excel input[type="checkbox"] { width: 16px; height: 16px; margin: 0; padding: 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+.tabel-isian-bawah { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.tabel-isian-bawah .btn { flex: none; }
+.modal .tabel-isian-petunjuk { flex: 1 1 320px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.tabel-isian-petunjuk b { color: var(--ink); }
+.tabel-isian-petunjuk kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--panel); color: var(--ink); font-family: var(--f-sans); font-size: 11px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 767px) {
+  .modal.tabel { width: 100%; }
+  .grid-excel-wrap { max-height: 64vh; }
+  /* kolom angka lebih ramping agar tidak banyak menggeser; huruf isian 16px agar iPhone tidak memperbesar layar saat sel dipilih */
+  .grid-excel { min-width: 680px; }
+  .grid-excel.g-baca { min-width: 560px; }
+  .grid-excel col.k-no { width: 34px; }
+  .grid-excel col.k-jumlah { width: 64px; }
+  .grid-excel col.k-satuan { width: 82px; }
+  .grid-excel col.k-harga { width: 112px; }
+  .grid-excel col.k-total { width: 118px; }
+  .grid-excel col.k-ket { width: 100px; }
+  .grid-excel col.k-aksi { width: 58px; }
+  .grid-excel col.k-periksa { width: 82px; }
+  .form .grid-excel input:not([type="checkbox"]) { font-size: 16px; }
+  .form .grid-excel .g-spek-isi input:not([type="checkbox"]) { font-size: 16px; }
+  .grid-excel thead th { padding: 4px 6px; white-space: normal; line-height: 1.2; }
 }

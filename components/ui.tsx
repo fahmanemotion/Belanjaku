@@ -1,6 +1,17 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ClipboardReact, type FormEvent, type KeyboardEvent as KeyboardReact, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent as ClipboardReact,
+  type FormEvent,
+  type InputHTMLAttributes,
+  type KeyboardEvent as KeyboardReact,
+  type ReactNode,
+} from "react";
 import Icon from "./Icon";
 import { DAFTAR_DANA, NAMA_DANA, type Dana } from "@/lib/data";
 import { desimal } from "@/lib/format";
@@ -166,6 +177,7 @@ export function Modal({
   bahaya = false,
   nonaktif = false,
   lebar = false,
+  jaga = false,
 }: {
   title: string;
   description: string;
@@ -178,11 +190,18 @@ export function Modal({
   bahaya?: boolean;
   /** kunci tombol simpan (alasannya ditampilkan di isi form) */
   nonaktif?: boolean;
-  /** modal lebar untuk form panjang (mis. daftar barang HPS) */
-  lebar?: boolean;
+  /** modal lebar untuk form panjang; "tabel" untuk form berisi tabel barang/jasa bergaya Excel */
+  lebar?: boolean | "tabel";
+  /**
+   * Isian sudah diubah: Esc dan klik di luar form tidak menutup form (tutup lewat Batal/×) agar isian tidak hilang.
+   * Form lebar "tabel" otomatis terjaga begitu ada yang diketik.
+   */
+  jaga?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [sedang, setSedang] = useState(false);
+  const [disentuh, setDisentuh] = useState(false);
+  const terjaga = jaga || (lebar === "tabel" && disentuh);
   const tutupRef = useRef(onClose);
   tutupRef.current = onClose;
 
@@ -192,10 +211,10 @@ export function Modal({
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !sedang && tutupRef.current();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !sedang && !terjaga && tutupRef.current();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sedang]);
+  }, [sedang, terjaga]);
 
   const handle = async (e: FormEvent) => {
     e.preventDefault();
@@ -209,8 +228,17 @@ export function Modal({
   };
 
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !sedang && onClose()}>
-      <form ref={formRef} className={`modal ${lebar ? "lebar" : ""}`} role="dialog" aria-modal="true" aria-label={title} aria-busy={sedang} onSubmit={handle}>
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !sedang && !terjaga && onClose()}>
+      <form
+        ref={formRef}
+        className={`modal ${lebar ? "lebar" : ""} ${lebar === "tabel" ? "tabel" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        aria-busy={sedang}
+        onSubmit={handle}
+        onInput={lebar === "tabel" && !disentuh ? () => setDisentuh(true) : undefined}
+      >
         <div className="mhead">
           <h3>{title}</h3>
           <button type="button" className="more" onClick={onClose} aria-label="Tutup" disabled={sedang}>
@@ -295,13 +323,13 @@ export function Field({ label, full, children }: { label: string; full?: boolean
 const MAKS_DIGIT_RUPIAH = 15;
 const titikRibuan = (digit: string) => digit.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-/** Teks → digit nilai rupiah (tanpa nol di depan, maksimal 15 digit) */
-const digitRupiah = (teks: string) => teks.replace(/\D/g, "").replace(/^0+/, "").slice(0, MAKS_DIGIT_RUPIAH);
+/** Teks → digit nilai rupiah (tanpa nol di depan, maksimal `maks` digit) */
+const digitRupiah = (teks: string, maks = MAKS_DIGIT_RUPIAH) => teks.replace(/\D/g, "").replace(/^0+/, "").slice(0, maks);
 /**
  * Teks dari clipboard ("Rp 5.000.000,00", "5,000,000.00") → digit saja. Desimal 1–2 angka di akhir dibuang
  * karena nilai belanja selalu bilangan bulat.
  */
-const digitTempel = (teks: string) => teks.replace(/[^\d.,]/g, "").replace(/[.,]\d{1,2}$/, "").replace(/\D/g, "");
+export const digitTempel = (teks: string) => teks.replace(/[^\d.,]/g, "").replace(/[.,]\d{1,2}$/, "").replace(/\D/g, "");
 
 /** Posisi kursor di teks berformat tepat setelah digit ke-`kiri` */
 function posisiSetelahDigit(teks: string, kiri: number): number {
@@ -311,7 +339,19 @@ function posisiSetelahDigit(teks: string, kiri: number): number {
   return teks.length;
 }
 
-export function InputRupiah({ value, onChange, placeholder = "0" }: { value: string; onChange: (digit: string) => void; placeholder?: string }) {
+export function InputRupiah({
+  value,
+  onChange,
+  placeholder = "0",
+  maks = MAKS_DIGIT_RUPIAH,
+  ...atribut
+}: {
+  value: string;
+  onChange: (digit: string) => void;
+  placeholder?: string;
+  /** jumlah digit maksimal (bawaan 15) */
+  maks?: number;
+} & Pick<InputHTMLAttributes<HTMLInputElement>, "aria-label" | "aria-invalid" | "id" | "title">) {
   const ref = useRef<HTMLInputElement>(null);
   const kursor = useRef<number | null>(null);
   const tampil = titikRibuan(value);
@@ -324,7 +364,7 @@ export function InputRupiah({ value, onChange, placeholder = "0" }: { value: str
   }, [tampil]);
 
   const terapkan = (teks: string, posisi: number) => {
-    const digit = digitRupiah(teks);
+    const digit = digitRupiah(teks, maks);
     const semua = teks.replace(/\D/g, "");
     const nolDepan = semua.length - semua.replace(/^0+/, "").length;
     const kiri = Math.min(Math.max(0, teks.slice(0, posisi).replace(/\D/g, "").length - nolDepan), digit.length);
@@ -367,6 +407,7 @@ export function InputRupiah({ value, onChange, placeholder = "0" }: { value: str
 
   return (
     <input
+      {...atribut}
       ref={ref}
       type="text"
       inputMode="numeric"

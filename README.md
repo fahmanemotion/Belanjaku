@@ -62,10 +62,28 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 
 | Tahap | Pelaku | Isian | Dokumen tercetak |
 |---|---|---|---|
-| 1. Nota Dinas & HPS | **PPK** | Pekerjaan, unit kerja, sumber dana, MAK, nomor & tanggal Nota Dinas, daftar barang/jasa (uraian, spesifikasi per baris, jumlah, satuan, harga satuan HPS, keterangan), PPN 11% | Nota Dinas *Perintah Pengadaan Barang/Jasa*, HPS (*Daftar Paket Pekerjaan*) |
-| 2. Surat Pesanan | **Pejabat Pengadaan** | Penyedia (pilih dari Referensi atau tambah baru) + data pembayarannya, nomor & tanggal SP, batas waktu (hari) | Surat Pesanan |
-| 3. Nota Pembelian | **Pejabat Pengadaan** | Tanggal nota, harga satuan pembelian per barang (bawaan = HPS; total tidak boleh melebihi HPS), PPN 11% | Nota / Bukti Pembelian |
-| 4. Kwitansi, BAP & BAST | **PPK** | Nomor & tanggal Kwitansi, BAP, BAST; tanda √ kolom *MEMENUHI* di Lampiran BAP | Kwitansi + Lampiran, BAP + Lampiran, BAST + Lampiran |
+| 1. Nota Dinas & HPS | **PPK** | Pekerjaan, unit kerja, sumber dana, MAK, nomor & tanggal Nota Dinas, **tabel HPS bergaya Excel** (uraian, baris spesifikasi, jumlah, satuan, harga satuan, keterangan), PPN 11% | Nota Dinas *Perintah Pengadaan Barang/Jasa*, HPS (*Daftar Paket Pekerjaan*) |
+| 2. Surat Pesanan | **Pejabat Pengadaan** | Penyedia (pilih dari Referensi atau tambah baru) + data pembayarannya, nomor & tanggal SP, batas waktu (hari); tabel barang yang dipesan tampil di bawahnya | Surat Pesanan |
+| 3. Nota Pembelian | **Pejabat Pengadaan** | Tanggal nota, **tabel harga** satuan pembelian per barang (bawaan = HPS; total tidak boleh melebihi HPS), PPN 11% | Nota / Bukti Pembelian |
+| 4. Kwitansi, BAP & BAST | **PPK** | Nomor & tanggal Kwitansi, BAP, BAST; tanda √ kolom *MEMENUHI* di Lampiran BAP; tabel lampiran tampil di bawahnya | Kwitansi + Lampiran, BAP + Lampiran, BAST + Lampiran |
+
+- **Isian barang/jasa bergaya Excel** (form Nota Dinas & HPS dan Nota Pembelian). Kolomnya sama dengan sheet HPS
+  (No · Uraian · Jumlah · Satuan · Harga Satuan · Total Jumlah · Ket), baris spesifikasi "- …" di bawah uraiannya, lalu baris
+  JUMLAH, PPN 11% (kotak centang), TOTAL JUMLAH, dan terbilang yang dihitung langsung.
+  - **Keyboard**: `Tab` / `Shift+Tab` pindah kolom; `Enter` turun ke baris berikutnya dan kembali ke kolom tempat mulai menekan Tab
+    (di baris terakhir yang sudah terisi menambah baris baru); panah pindah sel; `Alt/⌥+Enter` (atau `Shift+Enter`) menambah baris
+    spesifikasi; `Enter` di baris spesifikasi kosong mengakhiri daftar spesifikasi; `Backspace` di baris spesifikasi kosong menghapusnya;
+    `F2` menyunting isi sel; `Esc` keluar dari sel. Tombol **+** / tempat sampah di ujung baris menambah spesifikasi / menghapus baris.
+  - **Tempel dari Excel / Google Sheets** (`Ctrl/⌘+V`) mulai dari sel yang dipilih: baris judul kolom, kolom No, dan baris
+    JUMLAH / PPN / TOTAL / TERBILANG dilewati; baris yang diawali "-" (atau tanpa jumlah, satuan, dan harga) menjadi spesifikasi barang
+    di atasnya; isi sel berbaris banyak dipecah menjadi uraian + spesifikasi; "Rp 85.000" terbaca 85.000. Satu kolom (mis. Jumlah)
+    juga bisa ditempel ke beberapa baris sekaligus. Di Nota Pembelian, satu kolom harga atau baris nota lengkap bisa ditempel.
+  - Baris kosong tidak ikut disimpan. Bila simpan gagal, sel yang belum benar ditandai merah dan kursor pindah ke sel pertama.
+    Batas sama dengan database: **50 barang/jasa**, 20 baris spesifikasi per barang; harga di atas harga satuan HPS di Nota
+    Pembelian ditandai kuning (boleh selama total tidak melebihi HPS).
+  - Begitu ada yang diketik, `Esc` atau klik di luar form **tidak menutup form** agar isian tidak hilang — tutup lewat **Batal** / **×**.
+  - Form Surat Pesanan dan Kwitansi, BAP & BAST menampilkan lampiran barangnya dengan tabel yang sama (tanpa isian);
+    kolom *Memenuhi* mengikuti centang tanda √ dan kolom *Ket* tampil bila ada keterangan.
 
 - **Nomor dokumen** mengikuti pola berkas Excel; cukup isi bagian tengahnya, bulan (Romawi) dan tahun mengikuti tanggal dokumen:
   Nota Dinas & Kwitansi `PL.102/PPK/KO-RM/[100142]/X/PIP.MKS-2026`, Surat Pesanan `PL.102/PP/KO-RM/[100143]/X/PIP.MKS-2026`,
@@ -119,7 +137,7 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan — **jalankan sekali** (belum masuk produksi; ditempel lewat langkah v23)<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja — **sudah dijalankan**<br>6. `supabase/migrations/20261020090000_pengadaan_kwitansi.sql` — modul Pengadaan (alur dokumen Kwitansi) — **sudah dijalankan**<br>(4 aman dijalankan setelah 6 karena keduanya tidak mengubah fungsi yang sama — lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan — **sudah dijalankan**<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja — **sudah dijalankan**<br>6. `supabase/migrations/20261020090000_pengadaan_kwitansi.sql` — modul Pengadaan (alur dokumen Kwitansi) — **sudah dijalankan** |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -319,6 +337,7 @@ belanjaku-pip/
 │   ├── RekapBelanja.tsx    # daftar berceklist + riwayat rekap (dipakai Pencairan & Pengesahan)
 │   ├── CetakPengadaan.tsx  # 10 dokumen pengadaan A4 (format berkas Excel NODIN_KWITANSI)
 │   ├── InputNomor.tsx      # isian nomor dokumen berpola (PL.102/…)
+│   ├── TabelBarang.tsx     # tabel barang/jasa bergaya Excel di form pengadaan (keyboard, tempel dari Excel)
 │   ├── Combobox.tsx, CetakKegiatan.tsx, UnggahFaDetail.tsx, KolomKegiatan.tsx, Icon.tsx, Logo.tsx, ui.tsx
 │   └── modules/            # satu file per modul
 ├── lib/
@@ -358,4 +377,6 @@ belanjaku-pip/
 | *"Nota dinas … tidak bisa diubah karena Surat Pesanan sudah terbit"* | Minta Pejabat Pengadaan **membatalkan** Surat Pesanan (isiannya tetap tersimpan), perbaiki Nota Dinas, lalu SP diterbitkan ulang. |
 | Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default** (bukan *Minimum*/*Kustom*). Chrome & Edge tidak mencetak tanggal/URL bila margin Default; di Safari / Firefox matikan **Header dan footer**. |
 | NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
+| Daftar dari Excel tidak masuk ke kolom yang benar saat ditempel | Klik dulu sel tempat salinan dimulai: salinan yang dimulai dari kolom **Uraian** (atau **No.**) ditempel di sel Uraian, salinan satu kolom angka di sel kolom itu. Baris yang tidak dikenali bisa diperbaiki langsung di tabel. |
+| Form pengadaan tidak tertutup saat menekan Esc | Disengaja: setelah ada isian, Esc / klik di luar tidak menutup form agar daftar barang tidak hilang. Tutup lewat **Batal** atau **×**. |
 | Kop surat / logo tidak tampil atau tampil sebagai ikon rusak | Sejak v23 gambar tertanam di `lib/gambarDokumen.ts`. Pastikan file itu ikut ter-push dan deploy Vercel terbaru sudah selesai, lalu muat ulang halaman (⌘⇧R). |

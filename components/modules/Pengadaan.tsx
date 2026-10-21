@@ -17,7 +17,19 @@ import Icon from "@/components/Icon";
 import InputNomor, { nomorAwal, nomorLengkap, type NilaiNomor } from "@/components/InputNomor";
 import { TONE_BELANJA } from "@/components/modules/Belanja";
 import { useStore } from "@/components/StoreProvider";
-import { BadgeDana, Dialog, DiTabelLain, EmptyRow, Field, InputRupiah, Modal, PageHead, PilihDana, Saring, SearchBox, Status, Tabs, type Tone } from "@/components/ui";
+import {
+  TabelBeli,
+  TabelHps,
+  TabelLampiran,
+  barisDariItem,
+  barisKosong,
+  barisTerisi,
+  itemDariBaris,
+  pesanSalah,
+  salahBarang,
+  type BarisBarang,
+} from "@/components/TabelBarang";
+import { BadgeDana, Dialog, DiTabelLain, EmptyRow, Field, Modal, PageHead, PilihDana, Saring, SearchBox, Status, Tabs, type Tone } from "@/components/ui";
 import { akunSesuaiDana, type Dana } from "@/lib/data";
 import { hariIni, rupiah, rupiahSingkat, tanggal } from "@/lib/format";
 import { akunDariMak } from "@/lib/mak";
@@ -663,20 +675,6 @@ function LangkahPaket({ no, p, pelaku, children }: { no: TahapPaket; p: Paket; p
 /* =====================================================================
    Tahap 1 — Nota Dinas & HPS (PPK)
    ===================================================================== */
-interface IsianItem {
-  kunci: number;
-  uraian: string;
-  /** satu baris per spesifikasi */
-  spesifikasi: string;
-  jumlah: string;
-  satuan: string;
-  hargaHps: string;
-  ket: string;
-}
-let kunciItem = 0;
-const itemKosong = (): IsianItem => ({ kunci: ++kunciItem, uraian: "", spesifikasi: "", jumlah: "", satuan: "", hargaHps: "", ket: "" });
-const SATUAN = ["pcs", "buah", "unit", "paket", "set", "rim", "lusin", "box", "dus", "kg", "liter", "lembar", "eksemplar", "orang", "kegiatan", "bulan"];
-
 function FormNotaDinas({
   awal,
   danaAwal,
@@ -700,19 +698,14 @@ function FormNotaDinas({
   const [ppn, setPpn] = useState(awal?.ppn ?? true);
   const daftarPpk = pengguna.filter((u) => u.peran === "PPK" && u.aktif && !u.dihapus);
   const [ppkId, setPpkId] = useState(awal?.ppkId ?? (daftarPpk.length === 1 ? daftarPpk[0].id : ""));
-  const [item, setItem] = useState<IsianItem[]>(() =>
-    awal
-      ? awal.item.map((x) => ({
-          kunci: ++kunciItem,
-          uraian: x.uraian,
-          spesifikasi: x.spesifikasi.join("\n"),
-          jumlah: String(x.jumlah),
-          satuan: x.satuan,
-          hargaHps: String(x.hargaHps),
-          ket: x.ket,
-        }))
-      : [itemKosong()],
+  // Tabel HPS bergaya Excel: paket baru dimulai dengan 3 baris kosong, ubah paket = barang yang ada + 1 baris kosong
+  const [barang, setBarang] = useState<BarisBarang[]>(() =>
+    awal ? [...awal.item.map(barisDariItem), barisKosong()] : [barisKosong(), barisKosong(), barisKosong()],
   );
+  /** bertambah tiap kali simpan gagal karena isian tabel → sel yang salah ditandai merah */
+  const [coba, setCoba] = useState(0);
+  /** isian tabel sudah diubah → form tidak tertutup oleh Esc / klik di luar */
+  const [diubah, setDiubah] = useState(false);
 
   const opsiUnit: OpsiCombo[] = referensi.unit.map((u) => ({ value: u.kode, label: u.nama }));
   const opsiDana: OpsiCombo[] = referensi.dana.filter((d) => d.kode === "RM" || d.kode === "BLU").map((d) => ({ value: d.kode, label: d.kode }));
@@ -720,15 +713,17 @@ function FormNotaDinas({
     () => (dana ? daftarMak.filter((m) => akunSesuaiDana(m.akun, dana)).map((m) => ({ value: m.kode, label: m.kode, mono: true })) : []),
     [dana, daftarMak],
   );
-  const total = hitungTotal(
-    item.map((x) => ({ jumlah: Number(x.jumlah) || 0, hargaHps: Number(x.hargaHps) || 0 })),
-    "hargaHps",
-    ppn,
-  );
-  const ubahItem = (kunci: number, data: Partial<IsianItem>) => setItem((xs) => xs.map((x) => (x.kunci === kunci ? { ...x, ...data } : x)));
   const gantiDana = (d: string) => {
     setDana(d);
     if (mak && !akunSesuaiDana(akunDariMak(mak), d)) setMak("");
+  };
+  const gantiBarang = (xs: BarisBarang[]) => {
+    setBarang(xs);
+    setDiubah(true);
+  };
+  const gantiPpn = (v: boolean) => {
+    setPpn(v);
+    setDiubah(true);
   };
 
   const simpan = async () => {
@@ -742,9 +737,15 @@ function FormNotaDinas({
       admin && !ppkId && "PPK penanda tangan",
     ].filter(Boolean);
     if (kurang.length) return toast(`Lengkapi ${kurang.join(", ")}`);
-    for (const [i, x] of item.entries()) {
-      if (!x.uraian.trim() || !x.satuan.trim() || !(Number(x.jumlah) > 0) || !(Number(x.hargaHps) > 0))
-        return toast(`Lengkapi uraian, jumlah, satuan, dan harga satuan barang/jasa ke-${i + 1}`);
+    const isi = barang.filter(barisTerisi);
+    if (!isi.length) {
+      setCoba((c) => c + 1);
+      return toast("Isi minimal satu barang/jasa pada tabel HPS");
+    }
+    const k = isi.findIndex((b) => salahBarang(b).length > 0);
+    if (k >= 0) {
+      setCoba((c) => c + 1);
+      return toast(`Lengkapi ${pesanSalah(isi[k])} barang/jasa nomor ${k + 1} (sel bertanda merah)`);
     }
     const r = await simpanNotaDinas(awal?.id ?? null, {
       pekerjaan: pekerjaan.trim(),
@@ -754,17 +755,7 @@ function FormNotaDinas({
       ndNomor: nomorLengkap(nomor, polaNomor("nd", dana, tgl)),
       ndTanggal: tgl,
       ppn,
-      item: item.map((x) => ({
-        uraian: x.uraian.trim(),
-        spesifikasi: x.spesifikasi
-          .split("\n")
-          .map((s) => s.replace(/^\s*[-–•*]\s*/, "").trim())
-          .filter(Boolean),
-        jumlah: Number(x.jumlah),
-        satuan: x.satuan.trim(),
-        hargaHps: Number(x.hargaHps),
-        ket: x.ket.trim(),
-      })),
+      item: itemDariBaris(barang),
       ppkId: admin ? ppkId : undefined,
     });
     if (!r) return;
@@ -775,7 +766,8 @@ function FormNotaDinas({
 
   return (
     <Modal
-      lebar
+      lebar="tabel"
+      jaga={diubah}
       title={awal ? `Ubah Nota Dinas ${awal.id}` : "Buat Nota Dinas & HPS"}
       description="Nota Dinas Perintah Pengadaan Barang/Jasa kepada Pejabat Pengadaan beserta HPS (daftar paket pekerjaan). Masih bisa diubah selama Surat Pesanan belum terbit."
       submitLabel={awal ? "Simpan Perubahan" : "Terbitkan Nota Dinas"}
@@ -818,83 +810,7 @@ function FormNotaDinas({
       <Field label="Tanggal Nota Dinas">
         <input type="date" value={tgl} onChange={(e) => setTgl(e.target.value)} />
       </Field>
-
-      <div className="full daftar-item">
-        <div className="daftar-item-kepala">
-          <b>Barang/jasa yang akan diadakan (HPS)</b>
-          <small>{item.length} item</small>
-        </div>
-        {item.map((x, i) => (
-          <fieldset className="kartu-item" key={x.kunci}>
-            <legend>Barang/jasa {i + 1}</legend>
-            <div className="kartu-item-grid">
-              <label className="lebar">
-                Uraian
-                <input value={x.uraian} onChange={(e) => ubahItem(x.kunci, { uraian: e.target.value })} placeholder="mis. Cinderamata" />
-              </label>
-              <label className="lebar">
-                Spesifikasi (satu baris per spesifikasi, boleh kosong)
-                <textarea rows={2} value={x.spesifikasi} onChange={(e) => ubahItem(x.kunci, { spesifikasi: e.target.value })} placeholder={"Hydro Flask 220 ml\nBox Full print"} />
-              </label>
-              <label>
-                Jumlah
-                <input
-                  inputMode="numeric"
-                  className="num"
-                  value={x.jumlah}
-                  onChange={(e) => ubahItem(x.kunci, { jumlah: e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 6) })}
-                  placeholder="0"
-                />
-              </label>
-              <label>
-                Satuan
-                <input list="satuan-umum" value={x.satuan} onChange={(e) => ubahItem(x.kunci, { satuan: e.target.value })} placeholder="pcs" />
-              </label>
-              <label>
-                Harga satuan HPS (Rp)
-                <InputRupiah value={x.hargaHps} onChange={(v) => ubahItem(x.kunci, { hargaHps: v })} />
-              </label>
-              <label>
-                Keterangan (opsional)
-                <input value={x.ket} onChange={(e) => ubahItem(x.kunci, { ket: e.target.value })} />
-              </label>
-            </div>
-            <div className="kartu-item-kaki">
-              <span>
-                Jumlah <b className="num">{rupiah((Number(x.jumlah) || 0) * (Number(x.hargaHps) || 0))}</b>
-              </span>
-              {item.length > 1 && (
-                <button type="button" className="btn danger sm" onClick={() => setItem((xs) => xs.filter((y) => y.kunci !== x.kunci))}>
-                  <Icon name="trash" />
-                  Hapus
-                </button>
-              )}
-            </div>
-          </fieldset>
-        ))}
-        <datalist id="satuan-umum">
-          {SATUAN.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-        {item.length < 50 && (
-          <button type="button" className="btn soft sm tambah-item" onClick={() => setItem((xs) => [...xs, itemKosong()])}>
-            <Icon name="plus" />
-            Tambah barang/jasa
-          </button>
-        )}
-      </div>
-
-      <label className="full cek-baris">
-        <input type="checkbox" checked={ppn} onChange={(e) => setPpn(e.target.checked)} />
-        HPS termasuk PPN 11%
-      </label>
-      <div className="full ringkas">
-        <div><span>Jumlah</span><b className="num">{rupiah(total.jumlah)}</b></div>
-        {ppn && <div><span>PPN 11%</span><b className="num">{rupiah(total.ppn)}</b></div>}
-        <div className="total"><span>Total HPS</span><b className="num">{rupiah(total.total)}</b></div>
-        {total.total > 0 && <small className="terbilang-ringkas">{terbilangRupiah(total.total)}</small>}
-      </div>
+      <TabelHps nilai={barang} onChange={gantiBarang} ppn={ppn} onPpn={gantiPpn} coba={coba} onInfo={toast} />
     </Modal>
   );
 }
@@ -958,7 +874,7 @@ function FormPesanan({ p, onClose }: { p: Paket; onClose: () => void }) {
 
   return (
     <Modal
-      lebar
+      lebar="tabel"
       title={baru ? "Terbitkan Surat Pesanan" : `Ubah Surat Pesanan ${p.id}`}
       description="Surat Pesanan kepada penyedia/pihak ketiga. Data penyedia di bawah dicetak di Surat Pesanan hingga Kwitansi dan ikut tersimpan di Referensi."
       submitLabel={baru ? "Terbitkan Surat Pesanan" : "Simpan Perubahan"}
@@ -1027,6 +943,7 @@ function FormPesanan({ p, onClose }: { p: Paket; onClose: () => void }) {
         <input inputMode="numeric" className="num" value={batas} onChange={(e) => setBatas(e.target.value.replace(/\D/g, "").slice(0, 3))} />
         <small className="isian-catatan">Dicetak: &ldquo;paling lambat {Number(batas) || "…"} Hari Setelah Menerima Surat Pesanan ini&rdquo;</small>
       </Field>
+      <TabelLampiran judul="Barang/jasa yang dipesan (dari HPS)" item={p.item} harga="hps" ppn={p.ppn} />
     </Modal>
   );
 }
@@ -1041,6 +958,8 @@ function FormPembelian({ p, onClose }: { p: Paket; onClose: () => void }) {
   const [tgl, setTgl] = useState(p.nota?.tanggal ?? tanggalBawaan(minimal, p.tahun));
   const [ppn, setPpn] = useState(p.nota?.ppn ?? p.ppn);
   const [harga, setHarga] = useState<string[]>(() => p.item.map((x) => String(x.harga ?? x.hargaHps)));
+  /** harga sudah diubah → form tidak tertutup oleh Esc / klik di luar */
+  const [diubah, setDiubah] = useState(false);
   const beli = hitungTotal(
     p.item.map((x, i) => ({ jumlah: x.jumlah, hargaHps: x.hargaHps, harga: Number(harga[i]) || 0 })),
     "harga",
@@ -1053,7 +972,7 @@ function FormPembelian({ p, onClose }: { p: Paket; onClose: () => void }) {
     if (!tgl) return toast("Isi tanggal nota pembelian");
     if (tgl < minimal) return toast(`Tanggal nota tidak boleh sebelum tanggal surat pesanan (${tanggal(minimal)})`);
     const i = harga.findIndex((h) => !(Number(h) > 0));
-    if (i >= 0) return toast(`Isi harga satuan barang/jasa ke-${i + 1}`);
+    if (i >= 0) return toast(`Isi harga satuan barang/jasa nomor ${i + 1} (sel bertanda merah)`);
     if (lebih) return toast("Total pembelian melebihi HPS");
     const r = await simpanPembelian(p.id, { notaTanggal: tgl, ppn, harga: harga.map(Number) });
     if (!r) return;
@@ -1064,7 +983,8 @@ function FormPembelian({ p, onClose }: { p: Paket; onClose: () => void }) {
 
   return (
     <Modal
-      lebar
+      lebar="tabel"
+      jaga={diubah}
       title={baru ? "Catat Nota Pembelian" : `Ubah Nota Pembelian ${p.id}`}
       description="Harga sesuai Nota / Bukti Pembelian dari penyedia (bawaan: harga HPS). Total pembelian tidak boleh melebihi HPS."
       submitLabel={baru ? "Simpan Nota Pembelian" : "Simpan Perubahan"}
@@ -1075,36 +995,21 @@ function FormPembelian({ p, onClose }: { p: Paket; onClose: () => void }) {
       <Field label="Tanggal nota">
         <input type="date" value={tgl} min={minimal} onChange={(e) => setTgl(e.target.value)} />
       </Field>
-      <label className="cek-baris sejajar">
-        <input type="checkbox" checked={ppn} onChange={(e) => setPpn(e.target.checked)} />
-        Termasuk PPN 11%
-      </label>
-      <div className="full daftar-item">
-        {p.item.map((x, i) => (
-          <div className="baris-harga" key={i}>
-            <div>
-              <b>
-                {i + 1}. {x.uraian}
-              </b>
-              <small>
-                {x.jumlah} {x.satuan} · HPS {rupiah(x.hargaHps)} / {x.satuan}
-              </small>
-            </div>
-            <label>
-              Harga satuan (Rp)
-              <InputRupiah value={harga[i]} onChange={(v) => setHarga((h) => h.map((y, j) => (j === i ? v : y)))} />
-            </label>
-            <span className="num baris-harga-jumlah">{rupiah(x.jumlah * (Number(harga[i]) || 0))}</span>
-          </div>
-        ))}
-      </div>
-      <div className="full ringkas">
-        <div><span>Jumlah</span><b className="num">{rupiah(beli.jumlah)}</b></div>
-        {ppn && <div><span>PPN 11%</span><b className="num">{rupiah(beli.ppn)}</b></div>}
-        <div className="total"><span>Total pembelian</span><b className="num">{rupiah(beli.total)}</b></div>
-        <div><span>Total HPS</span><b className="num">{rupiah(hps.total)}</b></div>
-        {beli.total > 0 && <small className="terbilang-ringkas">{terbilangRupiah(beli.total)}</small>}
-      </div>
+      <TabelBeli
+        item={p.item}
+        harga={harga}
+        onHarga={(h) => {
+          setHarga(h);
+          setDiubah(true);
+        }}
+        ppn={ppn}
+        onPpn={(v) => {
+          setPpn(v);
+          setDiubah(true);
+        }}
+        totalHps={hps.total}
+        onInfo={toast}
+      />
       {lebih && <p className="full unggah-galat">Total pembelian {rupiah(beli.total)} melebihi HPS {rupiah(hps.total)}.</p>}
     </Modal>
   );
@@ -1162,7 +1067,7 @@ function FormKwitansi({ p, onClose }: { p: Paket; onClose: () => void }) {
 
   return (
     <Modal
-      lebar
+      lebar="tabel"
       title={baru ? "Terbitkan Kwitansi, BAP & BAST" : `Ubah Kwitansi ${p.id}`}
       description={
         baru
@@ -1203,6 +1108,7 @@ function FormKwitansi({ p, onClose }: { p: Paket; onClose: () => void }) {
       <Field label="Tanggal BAST">
         <input type="date" value={bastTgl} min={minimal} onChange={(e) => setBastTgl(e.target.value)} />
       </Field>
+      <TabelLampiran judul="Lampiran Kwitansi, BAP & BAST" item={p.item} harga="beli" ppn={p.nota?.ppn ?? p.ppn} centang={centang} />
       <label className="full cek-baris">
         <input type="checkbox" checked={centang} onChange={(e) => setCentang(e.target.checked)} />
         Beri tanda √ pada kolom MEMENUHI di Lampiran BAP (kosongkan bila diisi tangan)
