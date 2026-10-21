@@ -7,6 +7,8 @@
  *
  * Urutan kolom: Uraian Kegiatan · No. Dokumen · Jenis Dokumen · Penyedia · Sumber Dana · Akun · Nilai
  * Kode MAK (Mata Anggaran Kegiatan) tampil di bawah uraian kegiatan.
+ * Tabel yang sudah dipisah per sumber dana (Belanja, Pencairan, Pengesahan) memakai `tanpaDana`:
+ * kolom Sumber Dana tidak ditampilkan karena isinya sama untuk seluruh baris.
  */
 import { Fragment } from "react";
 import Icon from "./Icon";
@@ -17,22 +19,24 @@ import { rupiah } from "@/lib/format";
 import type { Kegiatan } from "@/lib/types";
 
 export const JUMLAH_KOLOM_KEGIATAN = 7;
+/** Jumlah kolom kegiatan; tanpa kolom Sumber Dana pada tabel per sumber dana */
+export const kolomKegiatan = (tanpaDana = false) => JUMLAH_KOLOM_KEGIATAN - (tanpaDana ? 1 : 0);
 
-export function KepalaKegiatan() {
+export function KepalaKegiatan({ tanpaDana = false }: { tanpaDana?: boolean }) {
   return (
     <>
       <th>Uraian Kegiatan</th>
       <th>No. Dokumen</th>
       <th>Jenis Dokumen</th>
       <th>Penyedia</th>
-      <th>Sumber Dana</th>
+      {!tanpaDana && <th>Sumber Dana</th>}
       <th>Akun</th>
       <th className="r">Nilai</th>
     </>
   );
 }
 
-export function SelKegiatan({ k }: { k: Kegiatan }) {
+export function SelKegiatan({ k, tanpaDana = false }: { k: Kegiatan; tanpaDana?: boolean }) {
   const { namaUnit, namaAkun, cariMak } = useStore();
   const dok = infoJenisDokumen(k.jenisDokumen);
   const mak = cariMak(k.mak);
@@ -68,9 +72,11 @@ export function SelKegiatan({ k }: { k: Kegiatan }) {
         <Badge tone={dok.tone}>{k.jenisDokumen}</Badge>
       </td>
       <td data-label="Penyedia">{k.penyedia}</td>
-      <td data-label="Sumber Dana">
-        <BadgeDana dana={k.dana} />
-      </td>
+      {!tanpaDana && (
+        <td data-label="Sumber Dana">
+          <BadgeDana dana={k.dana} />
+        </td>
+      )}
       <td data-label="Akun" title={namaAkun(k.akun)}>
         <span className="mono">{k.akun}</span>
         <div className="note akun-ur">{namaAkun(k.akun)}</div>

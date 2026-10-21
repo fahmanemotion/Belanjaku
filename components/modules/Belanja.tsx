@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import CetakKegiatan from "@/components/CetakKegiatan";
 import Combobox, { type OpsiCombo } from "@/components/Combobox";
 import Icon, { type IconName } from "@/components/Icon";
-import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
+import { KepalaKegiatan, SelKegiatan, kolomKegiatan } from "@/components/KolomKegiatan";
 import { useStore } from "@/components/StoreProvider";
-import { EmptyRow, Field, InputRupiah, Modal, PageHead, Paginasi, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
-import { JENIS_DOKUMEN, STATUS_BELANJA, akunSesuaiDana, infoJenisDokumen } from "@/lib/data";
+import { DiTabelLain, EmptyRow, Field, InputRupiah, Modal, PageHead, Paginasi, PilihDana, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
+import { JENIS_DOKUMEN, STATUS_BELANJA, akunSesuaiDana, infoJenisDokumen, type Dana } from "@/lib/data";
 import { hariIni, rupiah, rupiahSingkat, tanggal, terbilang } from "@/lib/format";
 import { akunDariMak } from "@/lib/mak";
 import type { JenisDokumen, Kegiatan, StatusBelanja, SumberDana } from "@/lib/types";
@@ -19,7 +19,6 @@ export const TONE_BELANJA: Record<StatusBelanja, Tone> = {
 };
 
 type Filter = "Semua" | StatusBelanja;
-type FilterDana = "Semua" | "RM" | "BLU";
 type FilterPencatat = "Semua" | "Saya";
 
 /**
@@ -27,11 +26,11 @@ type FilterPencatat = "Semua" | "Saya";
  * kebutuhan unit kerja secara terpusat (boleh oleh beberapa operator sekaligus).
  * Dokumen yang tersimpan langsung masuk Daftar Pencairan; status berikutnya mengikuti rekap
  * pencairan dan pengesahan oleh bagian keuangan.
+ * Tabel dipisah per sumber dana: tombol RM | BLU memindah tabel, kartu ringkasan ikut sumber dana yang dipilih.
  */
 export default function Belanja() {
-  const { kegiatan, izinUbah, infoPengguna, penggunaAktif, boleh, namaUnit, toast } = useStore();
+  const { kegiatan, izinUbah, infoPengguna, penggunaAktif, boleh, namaUnit, toast, danaAktif: dana, pilihDana } = useStore();
   const [filter, setFilter] = useState<Filter>("Semua");
-  const [dana, setDana] = useState<FilterDana>("Semua");
   const [pencatat, setPencatat] = useState<FilterPencatat>("Semua");
   const [cari, setCari] = useState("");
   const [formBaru, setFormBaru] = useState(false);
@@ -40,25 +39,26 @@ export default function Belanja() {
   const [dicetak, setDicetak] = useState<Kegiatan | null>(null);
 
   const bisaBuat = boleh("belanja.buat");
-  // Semua peran melihat seluruh dokumen belanja (pengguna tidak terikat unit kerja)
-  const terlihat = kegiatan;
+  const lain: Dana = dana === "RM" ? "BLU" : "RM";
+  // Semua peran melihat seluruh dokumen belanja (pengguna tidak terikat unit kerja); tabel per sumber dana
+  const perDana = useMemo(() => ({ RM: kegiatan.filter((k) => k.dana === "RM"), BLU: kegiatan.filter((k) => k.dana === "BLU") }), [kegiatan]);
+  const terlihat = perDana[dana];
   const dengan = (s: StatusBelanja) => terlihat.filter((k) => k.status === s);
   const nilai = (xs: Kegiatan[]) => xs.reduce((a, k) => a + k.nilai, 0);
 
-  const baris = useMemo(() => {
+  // Saringan status, pencatat, dan pencarian — sama untuk tabel RM maupun BLU
+  const cocok = useMemo(() => {
     const q = cari.trim().toLowerCase();
-    return terlihat.filter(
-      (k) =>
-        (filter === "Semua" || k.status === filter) &&
-        (dana === "Semua" || k.dana === dana) &&
-        (pencatat === "Semua" || k.dibuatOleh === penggunaAktif.id) &&
-        (!q ||
-          [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak, namaUnit(k.unit), k.pencairan?.nomor ?? "", k.pengesahan?.nomor ?? ""]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)),
-    );
-  }, [terlihat, filter, dana, pencatat, cari, penggunaAktif.id, namaUnit]);
+    return (k: Kegiatan) =>
+      (filter === "Semua" || k.status === filter) &&
+      (pencatat === "Semua" || k.dibuatOleh === penggunaAktif.id) &&
+      (!q ||
+        [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak, namaUnit(k.unit), k.pencairan?.nomor ?? "", k.pengesahan?.nomor ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(q));
+  }, [filter, pencatat, cari, penggunaAktif.id, namaUnit]);
+  const baris = useMemo(() => terlihat.filter(cocok), [terlihat, cocok]);
 
   // 30 dokumen per halaman; setiap filter berubah kembali ke halaman 1
   const hal = useHalaman(baris);
@@ -68,11 +68,16 @@ export default function Belanja() {
       set(v);
       hal.awal();
     };
-  const adaFilter = dana !== "Semua" || pencatat !== "Semua" || cari !== "";
+  const adaFilter = pencatat !== "Semua" || cari !== "";
+  // Hasil pencarian / saringan yang ada di tabel sumber dana lain
+  const cocokLain = adaFilter ? perDana[lain].filter(cocok).length : 0;
   const reset = () => {
-    setDana("Semua");
     setPencatat("Semua");
     setCari("");
+    hal.awal();
+  };
+  const gantiDana = (d: Dana) => {
+    pilihDana(d);
     hal.awal();
   };
 
@@ -115,9 +120,18 @@ export default function Belanja() {
         }
       />
 
+      <PilihDana
+        value={dana}
+        onChange={gantiDana}
+        info={{
+          RM: `${perDana.RM.length} dokumen · ${rupiahSingkat(nilai(perDana.RM))}`,
+          BLU: `${perDana.BLU.length} dokumen · ${rupiahSingkat(nilai(perDana.BLU))}`,
+        }}
+      />
+
       <div className="stats">
         <div className="stat hot">
-          <div className="lbl">Total tercatat</div>
+          <div className="lbl">Total tercatat · {dana}</div>
           <div className="big num">{rupiahSingkat(nilai(terlihat))}</div>
           <div className="note">{terlihat.length} dokumen belanja</div>
         </div>
@@ -130,7 +144,7 @@ export default function Belanja() {
         ))}
       </div>
 
-      <section className="panel ada-paginasi" ref={hal.ref}>
+      <section className="panel ada-paginasi" ref={hal.ref} aria-label={`Tabel belanja ${dana}`}>
         <div className="ph">
           <Tabs<Filter>
             label="Filter status"
@@ -142,16 +156,6 @@ export default function Belanja() {
             ]}
           />
           <div className="tbar filter-kegiatan">
-            <Saring<FilterDana>
-              label="Sumber dana"
-              value={dana}
-              onChange={saring(setDana)}
-              opsi={[
-                { value: "Semua", label: "Semua dana" },
-                { value: "RM", label: "RM" },
-                { value: "BLU", label: "BLU" },
-              ]}
-            />
             {bisaBuat && (
               <Saring<FilterPencatat>
                 label="Pencatat"
@@ -178,23 +182,24 @@ export default function Belanja() {
             Masuk sebagai <b>{penggunaAktif.nama}</b> ({penggunaAktif.peran}) · {keterangan.join(" ")}
           </span>
         </p>
+        <DiTabelLain jumlah={cocokLain} dana={lain} satuan="dokumen" onBuka={() => gantiDana(lain)} />
         <div className="tw stack">
           <table className="tabel-kegiatan">
             <thead>
               <tr>
-                <KepalaKegiatan />
+                <KepalaKegiatan tanpaDana />
                 <th>Status</th>
                 <th className="th-aksi">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {baris.length === 0 ? (
-                <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 2}>
+                <EmptyRow cols={kolomKegiatan(true) + 2}>
                   {terlihat.length === 0
                     ? bisaBuat
-                      ? "Belum ada dokumen belanja. Klik Catat Belanja untuk mencatat dokumen pertama."
-                      : "Belum ada dokumen belanja yang dicatat."
-                    : "Tidak ada dokumen yang cocok dengan filter."}
+                      ? `Belum ada dokumen belanja ${dana}. Klik Catat Belanja untuk mencatat dokumen.`
+                      : `Belum ada dokumen belanja ${dana} yang dicatat.`
+                    : `Tidak ada dokumen ${dana} yang cocok dengan filter.`}
                 </EmptyRow>
               ) : (
                 hal.tampil.map((k) => {
@@ -202,7 +207,7 @@ export default function Belanja() {
                   const rekap = k.pengesahan ?? k.pencairan;
                   return (
                     <tr key={k.id}>
-                      <SelKegiatan k={k} />
+                      <SelKegiatan k={k} tanpaDana />
                       <td data-label="Status">
                         <Status tone={TONE_BELANJA[k.status]}>{k.status}</Status>
                         {rekap && (
@@ -232,15 +237,27 @@ export default function Belanja() {
 
       {formBaru && (
         <FormBelanja
+          danaAwal={dana}
           onClose={() => setFormBaru(false)}
-          onSaved={() => {
+          onSaved={(d) => {
             setFilter("Semua");
+            // dokumen baru tampil di tabel sumber dananya
+            if (d !== dana && (d === "RM" || d === "BLU")) pilihDana(d);
             hal.awal();
             setFormBaru(false);
           }}
         />
       )}
-      {diedit && <FormBelanja awal={diedit} onClose={() => setDiedit(null)} onSaved={() => setDiedit(null)} />}
+      {diedit && (
+        <FormBelanja
+          awal={diedit}
+          onClose={() => setDiedit(null)}
+          onSaved={(d) => {
+            if (d !== dana && (d === "RM" || d === "BLU")) pilihDana(d);
+            setDiedit(null);
+          }}
+        />
+      )}
       {dihapus && <KonfirmasiHapus k={dihapus} onClose={() => setDihapus(null)} />}
       {dicetak && <CetakKegiatan k={dicetak} onClose={() => setDicetak(null)} />}
     </>
@@ -319,14 +336,26 @@ function KonfirmasiHapus({ k, onClose }: { k: Kegiatan; onClose: () => void }) {
 }
 
 /* ---------- Form catat dokumen belanja / ubah dokumen ---------- */
-function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () => void; onSaved: () => void }) {
+function FormBelanja({
+  awal,
+  danaAwal,
+  onClose,
+  onSaved,
+}: {
+  awal?: Kegiatan;
+  /** dokumen baru: sumber dana tabel yang sedang dibuka */
+  danaAwal?: Dana;
+  onClose: () => void;
+  /** dipanggil dengan sumber dana dokumen yang tersimpan */
+  onSaved: (dana: SumberDana) => void;
+}) {
   const { referensi, tambahKegiatan, editKegiatan, daftarMak, toast } = useStore();
   const [uraian, setUraian] = useState(awal?.uraian ?? "");
   const [jenisDokumen, setJenisDokumen] = useState<JenisDokumen | "">(awal?.jenisDokumen ?? "Kwitansi");
   const [noDokumen, setNoDokumen] = useState(awal?.noDokumen ?? "");
   const [penyedia, setPenyedia] = useState(awal?.penyediaId ?? "");
   const [unit, setUnit] = useState(awal?.unit ?? "");
-  const [dana, setDana] = useState<SumberDana | "">(awal?.dana ?? "");
+  const [dana, setDana] = useState<SumberDana | "">(awal?.dana ?? danaAwal ?? "");
   const [mak, setMak] = useState(awal?.mak ?? "");
   const [nilai, setNilai] = useState(awal ? String(awal.nilai) : "");
   const [tgl, setTgl] = useState(awal?.tanggal ?? hariIni());
@@ -401,9 +430,9 @@ function FormBelanja({ awal, onClose, onSaved }: { awal?: Kegiatan; onClose: () 
     } else {
       const baru = await tambahKegiatan(data);
       if (!baru) return;
-      toast(`${baru.id} tersimpan dan masuk Daftar Pencairan`);
+      toast(`${baru.id} tersimpan di tabel ${data.dana} dan masuk Daftar Pencairan`);
     }
-    onSaved();
+    onSaved(data.dana);
   };
 
   return (

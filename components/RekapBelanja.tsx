@@ -21,30 +21,24 @@
  * (form Sahkan menampilkan rinciannya lewat RPC cek_anggaran_pengesahan, database memeriksa ulang).
  *
  * Setiap "Cairkan"/"Sahkan" membentuk rekap bernomor (CAIR-… / SAH-…). Satu rekap berisi satu
- * sumber dana; bila yang dicentang campuran RM dan BLU, rekap otomatis dibuat per sumber dana.
+ * sumber dana. Tabel dipisah per sumber dana (tombol RM | BLU): Daftar dan Riwayat hanya berisi kegiatan /
+ * rekap dana yang dipilih, dan yang dicentang di tabel itu menjadi satu rekap untuk dana tersebut.
  * Rekap yang keliru dapat dibatalkan (wajib alasan) sehingga kegiatannya kembali ke daftar.
  * Database (RPC buat_rekap_* / batal_rekap_*) memeriksa ulang semua aturan ini.
  */
 import { useEffect, useMemo, useState } from "react";
 import Icon, { type IconName } from "@/components/Icon";
-import { JUMLAH_KOLOM_KEGIATAN, KepalaKegiatan, SelKegiatan } from "@/components/KolomKegiatan";
+import { KepalaKegiatan, SelKegiatan, kolomKegiatan } from "@/components/KolomKegiatan";
 import { useStore } from "@/components/StoreProvider";
-import { Badge, BadgeDana, EmptyRow, Field, Modal, PageHead, Paginasi, Saring, SearchBox, Status, Tabs, useHalaman, type Tone } from "@/components/ui";
+import { Badge, BadgeDana, DiTabelLain, EmptyRow, Field, Modal, PageHead, Paginasi, PilihDana, Saring, SearchBox, Status, useHalaman, type Tone } from "@/components/ui";
 import type { Izin } from "@/lib/akses";
-import { JENIS_DOKUMEN, JENIS_PENCAIRAN, jumlah } from "@/lib/data";
+import { DAFTAR_DANA, JENIS_DOKUMEN, JENIS_PENCAIRAN, NAMA_DANA, jumlah, type Dana } from "@/lib/data";
 import { desimal, hariIni, rupiah, rupiahSingkat, tanggal, tanggalJam } from "@/lib/format";
 import type { AnggaranMak, JenisDokumen, JenisPencairan, JenisRekap, Kegiatan, Rekap } from "@/lib/types";
 
-type Dana = "RM" | "BLU";
-type TabDana = "Semua" | Dana;
 type Tampilan = "daftar" | "riwayat";
 type FilterDok = "Semua" | JenisDokumen;
-type FilterDana = "Semua" | Dana;
 type FilterBayar = "Semua" | JenisPencairan;
-
-const DANA: Dana[] = ["RM", "BLU"];
-const TAB_DANA: TabDana[] = ["Semua", "RM", "BLU"];
-const NAMA_DANA: Record<Dana, string> = { RM: "Rupiah Murni", BLU: "PNBP BLU" };
 
 /** Warna badge mekanisme pembayaran (LS · GU · TUP) */
 export const TONE_JENIS_BAYAR: Record<JenisPencairan, Tone> = { LS: "i", GU: "w", TUP: "p" };
@@ -89,7 +83,7 @@ const KONFIG: Record<JenisRekap, Konfig> = {
     refSingkat: "No. SP2D / SPM",
     contohRef: "mis. nomor SP2D dari SAKTI",
     contohCatatan: "mis. Pembayaran termin I kontrak pemeliharaan",
-    kosong: "Belum ada kegiatan yang menunggu dicairkan. Kegiatan dicatat bagian pengadaan di modul Belanja.",
+    kosong: "Belum ada kegiatan {dana} yang menunggu dicairkan. Kegiatan dicatat bagian pengadaan di modul Belanja.",
   },
   pengesahan: {
     judul: "Pengesahan",
@@ -107,7 +101,7 @@ const KONFIG: Record<JenisRekap, Konfig> = {
     refSingkat: "No. dokumen pengesahan",
     contohRef: "mis. SP3B BLU / SP2B / SPM GU Nihil",
     contohCatatan: "mis. Pengesahan belanja BLU bulan Oktober",
-    kosong: "Belum ada kegiatan yang menunggu disahkan. Kegiatan masuk ke sini setelah dicairkan di modul Pencairan.",
+    kosong: "Belum ada kegiatan {dana} yang menunggu disahkan. Kegiatan masuk ke sini setelah dicairkan di modul Pencairan.",
   },
 };
 
@@ -118,11 +112,7 @@ export function labelRekap(r: Pick<Rekap, "nomor" | "jenisRekap">): string {
   return `${r.jenisRekap === "pencairan" ? "Pencairan" : "Pengesahan"} ${Number.isFinite(urut) ? String(urut).padStart(2, "0") : r.nomor}`;
 }
 const totalNilai = (xs: Kegiatan[]) => jumlah(xs.map((k) => k.nilai));
-/** "RM 2 · BLU 3" bila kegiatan terpilih tercampur dua sumber dana */
-const rincianDana = (xs: Kegiatan[]) => {
-  const ada = DANA.map((d) => [d, xs.filter((k) => k.dana === d).length] as const).filter(([, n]) => n > 0);
-  return ada.length > 1 ? ada.map(([d, n]) => `${d} ${jml(n)}`).join(" · ") : "";
-};
+const lawan = (d: Dana): Dana => (d === "RM" ? "BLU" : "RM");
 
 /* =========================================================
    Halaman modul
@@ -130,35 +120,67 @@ const rincianDana = (xs: Kegiatan[]) => {
 export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
-  const { kegiatan, rekap, boleh } = useStore();
+  const { kegiatan, rekap, boleh, danaAktif: dana, pilihDana } = useStore();
   // Pencairan: Operator Pencairan; Pengesahan: Operator Pengesahan; Administrator: keduanya
   const bisa = boleh(K.izin);
 
-  // Pencairan: belum dicairkan. Pengesahan: sudah dicairkan, belum disahkan.
-  const menunggu = useMemo(() => {
+  // Pencairan: belum dicairkan. Pengesahan: sudah dicairkan, belum disahkan. (kedua sumber dana)
+  const menungguSemua = useMemo(() => {
     const xs = kegiatan.filter((k) => (cair ? !k.pencairan : Boolean(k.pencairan) && !k.pengesahan));
     // Pengesahan: kegiatan dari rekap pencairan yang sama diletakkan berdekatan
     return cair ? xs : [...xs].sort((a, b) => b.pencairan!.nomor.localeCompare(a.pencairan!.nomor) || a.id.localeCompare(b.id));
   }, [kegiatan, cair]);
-  const selesai = useMemo(() => kegiatan.filter((k) => (cair ? k.pencairan : k.pengesahan)), [kegiatan, cair]);
-  const daftarRekap = useMemo(
+  const rekapSemua = useMemo(
     () => rekap.filter((r) => r.jenisRekap === jenis).sort((a, b) => b.dibuatPada.localeCompare(a.dibuatPada) || b.nomor.localeCompare(a.nomor)),
     [rekap, jenis],
   );
+  // Tabel per sumber dana
+  const menunggu = useMemo(() => menungguSemua.filter((k) => k.dana === dana), [menungguSemua, dana]);
+  const daftarRekap = useMemo(() => rekapSemua.filter((r) => r.dana === dana), [rekapSemua, dana]);
+  const kegDana = useMemo(() => kegiatan.filter((k) => k.dana === dana), [kegiatan, dana]);
 
   const [tampilan, setTampilan] = useState<Tampilan>("daftar");
-  const [tab, setTab] = useState<TabDana>("Semua");
   const [dipilih, setDipilih] = useState<string[]>([]);
   /** salinan kegiatan terpilih saat form dibuka */
   const [isiForm, setIsiForm] = useState<Kegiatan[] | null>(null);
   /** nomor rekap yang baru dibuat (disorot di Riwayat) */
   const [baru, setBaru] = useState<string[]>([]);
 
-  // Pilihan tetap tersimpan walau pindah tab; yang sudah tidak menunggu (diproses pengguna lain) diabaikan
+  // Centang berlaku per tabel: hanya kegiatan dana yang sedang dibuka yang ikut dicairkan/disahkan.
+  // Centang di tabel dana lain tetap tersimpan; yang sudah tidak menunggu (diproses pengguna lain) diabaikan.
   const terpilih = useMemo(() => {
     const s = new Set(dipilih);
     return menunggu.filter((k) => s.has(k.id));
   }, [menunggu, dipilih]);
+
+  // Ringkasan dana yang dipilih: alur belum dicairkan → dicairkan → disahkan
+  const belumCair = kegDana.filter((k) => !k.pencairan);
+  const sudahCair = kegDana.filter((k) => k.pencairan);
+  const tungguSah = kegDana.filter((k) => k.pencairan && !k.pengesahan);
+  const sudahSah = kegDana.filter((k) => k.pengesahan);
+  const kartu = cair
+    ? [
+        { lbl: `Menunggu pencairan · ${dana}`, xs: menunggu, note: `${jml(menunggu.length)} kegiatan` },
+        { lbl: "Sudah dicairkan", xs: sudahCair, note: `${jml(sudahCair.length)} kegiatan · ${jml(daftarRekap.length)} rekap` },
+        { lbl: "Menunggu pengesahan", xs: tungguSah, note: `${jml(tungguSah.length)} kegiatan` },
+        { lbl: "Disahkan", xs: sudahSah, note: `${jml(sudahSah.length)} kegiatan` },
+      ]
+    : [
+        { lbl: `Menunggu pengesahan · ${dana}`, xs: menunggu, note: `${jml(menunggu.length)} kegiatan` },
+        { lbl: "Sudah disahkan", xs: sudahSah, note: `${jml(sudahSah.length)} kegiatan · ${jml(daftarRekap.length)} rekap` },
+        { lbl: "Belum dicairkan", xs: belumCair, note: `${jml(belumCair.length)} kegiatan di Daftar Pencairan` },
+        { lbl: `Total belanja ${dana}`, xs: kegDana, note: `${jml(kegDana.length)} kegiatan` },
+      ];
+
+  // Ringkasan di tombol RM | BLU mengikuti tampilan: Daftar → menunggu, Riwayat → rekap
+  const infoDana = (d: Dana) => {
+    if (tampilan === "daftar") {
+      const xs = menungguSemua.filter((k) => k.dana === d);
+      return `${jml(xs.length)} menunggu · ${rupiahSingkat(totalNilai(xs))}`;
+    }
+    const rs = rekapSemua.filter((r) => r.dana === d);
+    return `${jml(rs.length)} rekap · ${rupiahSingkat(jumlah(rs.map((r) => r.total)))}`;
+  };
 
   return (
     <>
@@ -181,47 +203,41 @@ export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
         }
       />
 
+      <PilihDana value={dana} onChange={pilihDana} info={{ RM: infoDana("RM"), BLU: infoDana("BLU") }} />
+
       <div className="stats">
-        <div className="stat hot">
-          <div className="lbl">Menunggu {K.proses}</div>
-          <div className="big num">{rupiahSingkat(totalNilai(menunggu))}</div>
-          <div className="note">{jml(menunggu.length)} kegiatan</div>
-        </div>
-        {DANA.map((d) => {
-          const xs = menunggu.filter((k) => k.dana === d);
-          return (
-            <div className="stat" key={d}>
-              <div className="lbl">Menunggu · {d}</div>
-              <div className="big num">{rupiahSingkat(totalNilai(xs))}</div>
-              <div className="note">
-                {jml(xs.length)} kegiatan {NAMA_DANA[d]}
-              </div>
-            </div>
-          );
-        })}
-        <div className="stat">
-          <div className="lbl">Sudah {K.kata}</div>
-          <div className="big num">{rupiahSingkat(totalNilai(selesai))}</div>
-          <div className="note">
-            {jml(selesai.length)} kegiatan · {jml(daftarRekap.length)} rekap
+        {kartu.map((c, i) => (
+          <div className={`stat ${i === 0 ? "hot" : ""}`} key={c.lbl}>
+            <div className="lbl">{c.lbl}</div>
+            <div className="big num">{rupiahSingkat(totalNilai(c.xs))}</div>
+            <div className="note">{c.note}</div>
           </div>
-        </div>
+        ))}
       </div>
 
       {tampilan === "daftar" ? (
         <DaftarRekap
           jenis={jenis}
+          dana={dana}
           menunggu={menunggu}
+          menungguLain={menungguSemua.filter((k) => k.dana !== dana)}
+          onPindahDana={pilihDana}
           bisa={bisa}
-          tab={tab}
-          setTab={setTab}
           dipilih={dipilih}
           setDipilih={setDipilih}
           terpilih={terpilih}
           onRekap={() => setIsiForm(terpilih)}
         />
       ) : (
-        <RiwayatRekap jenis={jenis} daftar={daftarRekap} bisa={bisa} baru={baru} />
+        <RiwayatRekap
+          jenis={jenis}
+          dana={dana}
+          daftar={daftarRekap}
+          daftarLain={rekapSemua.filter((r) => r.dana !== dana)}
+          onPindahDana={pilihDana}
+          bisa={bisa}
+          baru={baru}
+        />
       )}
 
       {isiForm && (
@@ -230,8 +246,10 @@ export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
           isi={isiForm}
           onClose={() => setIsiForm(null)}
           onSelesai={(hasil) => {
+            // hanya centang kegiatan yang sudah diproses yang dilepas; centang di tabel dana lain tetap
+            const selesai = new Set(isiForm.map((k) => k.id));
+            setDipilih((xs) => xs.filter((id) => !selesai.has(id)));
             setIsiForm(null);
-            setDipilih([]);
             setBaru(hasil.map((r) => r.nomor));
             setTampilan("riwayat");
           }}
@@ -246,20 +264,24 @@ export default function RekapBelanja({ jenis }: { jenis: JenisRekap }) {
    ========================================================= */
 function DaftarRekap({
   jenis,
+  dana,
   menunggu,
+  menungguLain,
+  onPindahDana,
   bisa,
-  tab,
-  setTab,
   dipilih,
   setDipilih,
   terpilih,
   onRekap,
 }: {
   jenis: JenisRekap;
+  dana: Dana;
+  /** kegiatan dana ini yang menunggu */
   menunggu: Kegiatan[];
+  /** kegiatan dana lain yang menunggu (untuk ajakan pindah tabel saat mencari) */
+  menungguLain: Kegiatan[];
+  onPindahDana: (d: Dana) => void;
   bisa: boolean;
-  tab: TabDana;
-  setTab: (t: TabDana) => void;
   dipilih: string[];
   setDipilih: (ids: string[]) => void;
   terpilih: Kegiatan[];
@@ -272,24 +294,19 @@ function DaftarRekap({
   const [unit, setUnit] = useState("Semua");
   const [cari, setCari] = useState("");
 
-  const sumber = useMemo(() => (tab === "Semua" ? menunggu : menunggu.filter((k) => k.dana === tab)), [menunggu, tab]);
-  // Pilihan unit hanya unit yang punya kegiatan di daftar ini
+  // Pilihan unit hanya unit yang punya kegiatan di tabel ini
   const opsiUnit = useMemo(
     () =>
-      [...new Set(sumber.map((k) => k.unit))]
+      [...new Set(menunggu.map((k) => k.unit))]
         .map((u) => ({ value: u, label: namaUnit(u) }))
         .sort((a, b) => a.label.localeCompare(b.label, "id")),
-    [sumber, namaUnit],
+    [menunggu, namaUnit],
   );
-  const baris = useMemo(() => {
-    const q = cari.trim().toLowerCase();
-    return sumber.filter(
-      (k) =>
-        (dok === "Semua" || k.jenisDokumen === dok) &&
-        (unit === "Semua" || k.unit === unit) &&
-        (!q || [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak, namaUnit(k.unit), k.pencairan?.nomor ?? ""].join(" ").toLowerCase().includes(q)),
-    );
-  }, [sumber, dok, unit, cari, namaUnit]);
+  const q = cari.trim().toLowerCase();
+  const cocokCari = (k: Kegiatan) =>
+    (dok === "Semua" || k.jenisDokumen === dok) &&
+    (!q || [k.id, k.uraian, k.noDokumen, k.penyedia, k.akun, k.mak, namaUnit(k.unit), k.pencairan?.nomor ?? ""].join(" ").toLowerCase().includes(q));
+  const baris = menunggu.filter((k) => (unit === "Semua" || k.unit === unit) && cocokCari(k));
 
   // 30 kegiatan per halaman; setiap filter berubah kembali ke halaman 1
   const hal = useHalaman(baris);
@@ -299,7 +316,16 @@ function DaftarRekap({
       set(v);
       hal.awal();
     };
+  // Pindah tabel RM ⇄ BLU: unit kerja (pilihannya beda per tabel) dan halaman kembali ke awal
+  const [danaTadi, setDanaTadi] = useState(dana);
+  if (danaTadi !== dana) {
+    setDanaTadi(dana);
+    setUnit("Semua");
+    hal.awal();
+  }
   const adaFilter = dok !== "Semua" || unit !== "Semua" || cari !== "";
+  // Hasil pencarian / jenis dokumen yang ada di tabel dana lain (saringan unit kerja tidak dibawa)
+  const cocokLain = q || dok !== "Semua" ? menungguLain.filter(cocokCari).length : 0;
   const reset = () => {
     setDok("Semua");
     setUnit("Semua");
@@ -316,31 +342,21 @@ function DaftarRekap({
     setDipilih(semuaHal ? dipilih.filter((x) => !halIni.some((k) => k.id === x)) : [...new Set([...dipilih, ...halIni.map((k) => k.id)])]);
 
   const total = totalNilai(baris);
-  const kolom = JUMLAH_KOLOM_KEGIATAN + 1 + (bisa ? 1 : 0);
+  const kolom = kolomKegiatan(true) + 1 + (bisa ? 1 : 0);
   const labelKolom = cair ? "Tgl. Dokumen" : "Pencairan";
-  const hitung = (t: TabDana) => (t === "Semua" ? menunggu.length : menunggu.filter((k) => k.dana === t).length);
-  const campur = rincianDana(terpilih);
 
   return (
-    <section className="panel ada-paginasi" ref={hal.ref}>
+    <section className="panel ada-paginasi" ref={hal.ref} aria-label={`${K.daftar} ${dana}`}>
       <div className="ph">
         <div>
-          <h3>{K.daftar}</h3>
+          <h3>
+            {K.daftar} {dana}
+          </h3>
           <p className="sub">
-            {jml(baris.length)} kegiatan{tab === "Semua" ? "" : ` ${tab}`} menunggu {K.proses} · total {rupiah(total)}
+            {jml(baris.length)} kegiatan {NAMA_DANA[dana]} menunggu {K.proses} · total {rupiah(total)}
           </p>
         </div>
         <div className="tbar filter-kegiatan">
-          <Tabs<TabDana>
-            label="Sumber dana"
-            value={tab}
-            onChange={(t) => {
-              setTab(t);
-              setUnit("Semua");
-              hal.awal();
-            }}
-            items={TAB_DANA.map((t) => ({ value: t, label: `${t} · ${jml(hitung(t))}` }))}
-          />
           <Saring<FilterDok>
             label="Jenis dokumen"
             value={dok}
@@ -363,10 +379,11 @@ function DaftarRekap({
         <span>
           Masuk sebagai <b>{penggunaAktif.nama}</b> ({penggunaAktif.peran}) ·{" "}
           {bisa
-            ? `Centang kegiatan yang akan ${K.kata}, lalu klik ${K.tombol}. Kegiatan yang sudah ${K.kata} pindah ke Riwayat${cair ? " dan masuk Daftar Pengesahan" : ""}; RM dan BLU otomatis dibuat rekap terpisah.`
+            ? `Centang kegiatan ${dana} yang akan ${K.kata}, lalu klik ${K.tombol}; kegiatan yang dicentang menjadi satu rekap ${K.proses} ${dana}. Kegiatan yang sudah ${K.kata} pindah ke Riwayat${cair ? " dan masuk Daftar Pengesahan" : ""}.`
             : `Anda dapat melihat daftar dan riwayat. ${K.pelaku}`}
         </span>
       </p>
+      <DiTabelLain jumlah={cocokLain} dana={lawan(dana)} satuan="kegiatan" onBuka={() => onPindahDana(lawan(dana))} />
 
       <div className="tw stack">
         <table className={`tabel-kegiatan ${bisa ? "tabel-pilih" : ""}`}>
@@ -386,18 +403,14 @@ function DaftarRekap({
                   />
                 </th>
               )}
-              <KepalaKegiatan />
+              <KepalaKegiatan tanpaDana />
               <th>{labelKolom}</th>
             </tr>
           </thead>
           <tbody>
             {baris.length === 0 ? (
               <EmptyRow cols={kolom}>
-                {menunggu.length === 0
-                  ? K.kosong
-                  : sumber.length === 0
-                    ? `Tidak ada kegiatan ${tab} yang menunggu ${K.proses}.`
-                    : "Tidak ada kegiatan yang cocok dengan filter."}
+                {menunggu.length === 0 ? K.kosong.replace("{dana}", dana) : `Tidak ada kegiatan ${dana} yang cocok dengan filter.`}
               </EmptyRow>
             ) : (
               halIni.map((k) => {
@@ -415,7 +428,7 @@ function DaftarRekap({
                         />
                       </td>
                     )}
-                    <SelKegiatan k={k} />
+                    <SelKegiatan k={k} tanpaDana />
                     <td data-label={labelKolom}>
                       {cair ? (
                         <>
@@ -434,8 +447,8 @@ function DaftarRekap({
           {baris.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1 + (bisa ? 1 : 0)}>
-                  Total {jml(baris.length)} kegiatan
+                <td colSpan={kolomKegiatan(true) - 1 + (bisa ? 1 : 0)}>
+                  Total {jml(baris.length)} kegiatan {dana}
                   {hal.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
                 </td>
                 <td className="r num">{rupiah(total)}</td>
@@ -450,19 +463,17 @@ function DaftarRekap({
       {bisa && (
         <div className={`pickbar ${terpilih.length ? "aktif" : ""}`}>
           <div>
-            <b>{terpilih.length ? `${jml(terpilih.length)} kegiatan dipilih` : "Belum ada kegiatan dipilih"}</b>
-            <span className="num">
-              {terpilih.length ? `${rupiah(totalNilai(terpilih))}${campur ? ` · ${campur}` : ""}` : `Centang kegiatan yang akan ${K.kata}`}
-            </span>
+            <b>{terpilih.length ? `${jml(terpilih.length)} kegiatan ${dana} dipilih` : `Belum ada kegiatan ${dana} dipilih`}</b>
+            <span className="num">{terpilih.length ? rupiah(totalNilai(terpilih)) : `Centang kegiatan yang akan ${K.kata}`}</span>
           </div>
           <div className="tbar">
             {terpilih.length > 0 ? (
-              <button type="button" className="btn soft sm" onClick={() => setDipilih([])}>
+              <button type="button" className="btn soft sm" onClick={() => setDipilih(dipilih.filter((id) => !menunggu.some((k) => k.id === id)))}>
                 Batal pilih
               </button>
             ) : (
               baris.length > 0 && (
-                <button type="button" className="btn soft sm" onClick={() => setDipilih(baris.map((k) => k.id))}>
+                <button type="button" className="btn soft sm" onClick={() => setDipilih([...new Set([...dipilih, ...baris.map((k) => k.id)])])}>
                   Pilih semua ({jml(baris.length)})
                 </button>
               )
@@ -521,7 +532,7 @@ function FormRekap({
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
   const { buatRekap, cekAnggaran, dataPok, toast } = useStore();
-  const grup = DANA.map((d) => ({ dana: d, isi: isi.filter((k) => k.dana === d) })).filter((g) => g.isi.length > 0);
+  const grup = DAFTAR_DANA.map((d) => ({ dana: d, isi: isi.filter((k) => k.dana === d) })).filter((g) => g.isi.length > 0);
 
   // Sahkan: sisa anggaran MAK (FA Detail aktif) diperiksa dulu; tombol terkunci bila ada MAK yang kurang
   const [anggaran, setAnggaran] = useState<StatusAnggaran>(cair ? { status: "-" } : { status: "memuat" });
@@ -547,7 +558,7 @@ function FormRekap({
   // Kwitansi umumnya dibayar lewat GU; kontrak/honor/gaji/perjadin lewat LS
   const [isian, setIsian] = useState<Record<Dana, IsianDana>>(() => {
     const awal = {} as Record<Dana, IsianDana>;
-    for (const d of DANA) {
+    for (const d of DAFTAR_DANA) {
       const xs = isi.filter((k) => k.dana === d);
       awal[d] = { jenisBayar: xs.length > 0 && xs.every((k) => k.jenisDokumen === "Kwitansi") ? "GU" : "LS", referensi: "" };
     }
@@ -741,11 +752,28 @@ function CekAnggaran({ anggaran, periode }: { anggaran: StatusAnggaran; periode?
 /* =========================================================
    Riwayat: tabel rekapan → tombol aksi menampilkan daftar kegiatan rekap tersebut
    ========================================================= */
-function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar: Rekap[]; bisa: boolean; baru: string[] }) {
+function RiwayatRekap({
+  jenis,
+  dana,
+  daftar,
+  daftarLain,
+  onPindahDana,
+  bisa,
+  baru,
+}: {
+  jenis: JenisRekap;
+  dana: Dana;
+  /** rekap dana ini */
+  daftar: Rekap[];
+  /** rekap dana lain (untuk ajakan pindah tabel saat mencari) */
+  daftarLain: Rekap[];
+  onPindahDana: (d: Dana) => void;
+  bisa: boolean;
+  baru: string[];
+}) {
   const K = KONFIG[jenis];
   const cair = jenis === "pencairan";
   const { kegiatan, infoPengguna } = useStore();
-  const [dana, setDana] = useState<FilterDana>("Semua");
   const [bayar, setBayar] = useState<FilterBayar>("Semua");
   const [cari, setCari] = useState("");
   /** nomor rekap yang sedang dibuka (tabel rekapan diganti daftar kegiatannya) */
@@ -765,26 +793,24 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
     return peta;
   }, [kegiatan, cair]);
 
-  const baris = useMemo(() => {
+  const cocok = useMemo(() => {
     const q = cari.trim().toLowerCase();
-    return daftar.filter(
-      (r) =>
-        (dana === "Semua" || r.dana === dana) &&
-        (bayar === "Semua" || r.jenisBayar === bayar) &&
-        (!q ||
-          [
-            labelRekap(r),
-            r.nomor,
-            r.referensi ?? "",
-            r.catatan ?? "",
-            infoPengguna(r.dibuatOleh).nama,
-            ...(isi.get(r.nomor) ?? []).flatMap((k) => [k.id, k.uraian, k.noDokumen, k.penyedia]),
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)),
-    );
-  }, [daftar, dana, bayar, cari, isi, infoPengguna]);
+    return (r: Rekap) =>
+      (bayar === "Semua" || r.jenisBayar === bayar) &&
+      (!q ||
+        [
+          labelRekap(r),
+          r.nomor,
+          r.referensi ?? "",
+          r.catatan ?? "",
+          infoPengguna(r.dibuatOleh).nama,
+          ...(isi.get(r.nomor) ?? []).flatMap((k) => [k.id, k.uraian, k.noDokumen, k.penyedia]),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q));
+  }, [bayar, cari, isi, infoPengguna]);
+  const baris = useMemo(() => daftar.filter(cocok), [daftar, cocok]);
 
   const hal = useHalaman(baris);
   const saring =
@@ -793,9 +819,16 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
       set(v);
       hal.awal();
     };
-  const adaFilter = dana !== "Semua" || bayar !== "Semua" || cari !== "";
+  // Pindah tabel RM ⇄ BLU: kembali ke tabel rekapan halaman pertama
+  const [danaTadi, setDanaTadi] = useState(dana);
+  if (danaTadi !== dana) {
+    setDanaTadi(dana);
+    setAktif(null);
+    hal.awal();
+  }
+  const adaFilter = bayar !== "Semua" || cari !== "";
+  const cocokLain = adaFilter ? daftarLain.filter(cocok).length : 0;
   const reset = () => {
-    setDana("Semua");
     setBayar("Semua");
     setCari("");
     hal.awal();
@@ -816,7 +849,7 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
   const total = jumlah(baris.map((r) => r.total));
 
   return (
-    <section className="panel ada-paginasi" ref={hal.ref}>
+    <section className="panel ada-paginasi" ref={hal.ref} aria-label={`${K.riwayat} ${dana}`}>
       {rekapAktif ? (
         <DetailRekap
           r={rekapAktif}
@@ -831,18 +864,14 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
         <>
           <div className="ph">
             <div>
-              <h3>{K.riwayat}</h3>
+              <h3>
+                {K.riwayat} {dana}
+              </h3>
               <p className="sub">
-                {jml(baris.length)} rekap · {jml(jumlah(baris.map((r) => r.jumlah)))} kegiatan · total {rupiah(total)}
+                {jml(baris.length)} rekap {NAMA_DANA[dana]} · {jml(jumlah(baris.map((r) => r.jumlah)))} kegiatan · total {rupiah(total)}
               </p>
             </div>
             <div className="tbar filter-kegiatan">
-              <Saring<FilterDana>
-                label="Sumber dana"
-                value={dana}
-                onChange={saring(setDana)}
-                opsi={[{ value: "Semua", label: "Semua dana" }, ...DANA.map((d) => ({ value: d, label: d }))]}
-              />
               {cair && (
                 <Saring<FilterBayar>
                   label="Jenis pembayaran"
@@ -861,23 +890,23 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
             </div>
           </div>
 
+          <DiTabelLain jumlah={cocokLain} dana={lawan(dana)} satuan="rekap" onBuka={() => onPindahDana(lawan(dana))} />
           <div className="tw stack">
             <table className="tabel-rekap">
               <thead>
                 <tr>
                   <th>Uraian</th>
                   <th>{labelTgl}</th>
-                  <th>Sumber Dana</th>
                   <th className="r">{labelNominal}</th>
                   <th className="r">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {baris.length === 0 ? (
-                  <EmptyRow cols={5}>
+                  <EmptyRow cols={4}>
                     {daftar.length === 0
-                      ? `Belum ada rekap ${K.proses}. Rekap terbentuk saat kegiatan di Daftar dicentang lalu ${K.kata}.`
-                      : "Tidak ada rekap yang cocok dengan filter."}
+                      ? `Belum ada rekap ${K.proses} ${dana}. Rekap terbentuk saat kegiatan di Daftar dicentang lalu ${K.kata}.`
+                      : `Tidak ada rekap ${dana} yang cocok dengan filter.`}
                   </EmptyRow>
                 ) : (
                   hal.tampil.map((r) => {
@@ -915,9 +944,6 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
                         <td className="num" data-label={labelTgl}>
                           {tanggal(r.tanggal)}
                         </td>
-                        <td data-label="Sumber Dana">
-                          <BadgeDana dana={r.dana} />
-                        </td>
                         <td className="r num" data-label={labelNominal}>
                           <b>{rupiah(r.total)}</b>
                         </td>
@@ -943,8 +969,8 @@ function RiwayatRekap({ jenis, daftar, bisa, baru }: { jenis: JenisRekap; daftar
               {baris.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>
-                      Total {jml(baris.length)} rekap
+                    <td colSpan={2}>
+                      Total {jml(baris.length)} rekap {dana}
                       {hal.jumlahHalaman > 1 && <span className="note"> (semua halaman)</span>}
                     </td>
                     <td className="r num">{rupiah(total)}</td>
@@ -1076,17 +1102,17 @@ function DetailRekap({
         <table className="tabel-kegiatan">
           <thead>
             <tr>
-              <KepalaKegiatan />
+              <KepalaKegiatan tanpaDana />
               <th>{kolomAkhir}</th>
             </tr>
           </thead>
           <tbody>
             {dok.length === 0 ? (
-              <EmptyRow cols={JUMLAH_KOLOM_KEGIATAN + 1}>Rincian kegiatan rekap ini tidak ditemukan.</EmptyRow>
+              <EmptyRow cols={kolomKegiatan(true) + 1}>Rincian kegiatan rekap ini tidak ditemukan.</EmptyRow>
             ) : (
               dok.map((k) => (
                 <tr key={k.id}>
-                  <SelKegiatan k={k} />
+                  <SelKegiatan k={k} tanpaDana />
                   <td data-label={kolomAkhir}>
                     {cair ? (
                       k.pengesahan ? (
@@ -1110,7 +1136,7 @@ function DetailRekap({
           {dok.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={JUMLAH_KOLOM_KEGIATAN - 1}>Total {jml(dok.length)} kegiatan</td>
+                <td colSpan={kolomKegiatan(true) - 1}>Total {jml(dok.length)} kegiatan</td>
                 <td className="r num">{rupiah(totalNilai(dok))}</td>
                 <td />
               </tr>

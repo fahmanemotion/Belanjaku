@@ -42,9 +42,13 @@ status: Belum dicairkan         status: Dicairkan (CAIR-2026-…)      status: D
    tombol Sahkan terkunci bila total kegiatan terpilih pada suatu MAK melebihi sisanya (lihat *Sisa anggaran saat pengesahan*).
 
 - Administrator boleh mencairkan maupun mengesahkan. Operator Pencairan dan Operator Pengesahan masing-masing **hanya satu akun aktif**.
-- Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**. Daftar punya tab
-  **Semua / RM / BLU**; bila yang dicentang campuran RM dan BLU, aplikasi otomatis membuat satu rekap untuk setiap sumber dana.
-- **Riwayat** menampilkan **tabel rekapan**: Uraian (mis. *Pencairan 01*, *Pengesahan 01*), tanggal, sumber dana, dan nominal.
+- **Tabel per sumber dana**: Pengadaan, Belanja, Pencairan, dan Pengesahan punya **tabel RM** dan **tabel BLU** sendiri.
+  Tombol **RM | BLU** di bawah judul halaman memindah tabel (ringkasan jumlah & nilai tiap dana tampil di tombolnya); kartu
+  ringkasan, tab, dan tabel di bawahnya mengikuti dana yang dipilih. Pilihan ini sama di keempat modul dan diingat di
+  browser. Bila pencarian/saringan cocok dengan data di tabel dana lain, muncul ajakan **Buka tabel …**. Dashboard tetap gabungan.
+- Setiap Cairkan/Sahkan membentuk **rekap bernomor** (CAIR-… / SAH-…) berisi **satu sumber dana**: kegiatan yang dicentang
+  di tabel RM menjadi rekap RM, di tabel BLU menjadi rekap BLU. Centang di tabel lain tetap tersimpan sampai diproses.
+- **Riwayat** menampilkan **tabel rekapan** per sumber dana: Uraian (mis. *Pencairan 01*, *Pengesahan 01*), tanggal, dan nominal.
   Tombol **Lihat daftar** di kolom Aksi mengganti tabel itu dengan daftar kegiatan yang sudah dicairkan / disahkan pada
   rekap tersebut; tombol *Kembali ke tabel rekapan* untuk kembali. Uraian mengikuti nomor rekap (CAIR-2026-0001 → Pencairan 01).
 - Rekap yang keliru bisa **dibatalkan** dari daftar kegiatan rekapnya di Riwayat (wajib alasan); kegiatannya kembali ke daftar dan nomor rekap
@@ -225,12 +229,12 @@ Font (Bricolage Grotesque, Onest, JetBrains Mono) dimuat dari Google Fonts; tanp
 
 | Route         | Isi |
 |---------------|-----|
-| `/pengadaan`  | Alur dokumen Kwitansi: kartu 4 tahap, daftar paket (filter tahap, dana, *Perlu tindakan saya*), rincian paket per tahap, form tiap tahap, cetak 10 dokumen sesuai format Excel |
+| `/pengadaan`  | Alur dokumen Kwitansi: tombol **RM \| BLU**, kartu 4 tahap & tabel paket per sumber dana (filter tahap, *Perlu tindakan saya*), rincian paket per tahap, form tiap tahap, cetak 10 dokumen sesuai format Excel |
 | `/dashboard`  | Pagu & jenis belanja dari FA Detail (filter **Gabung / RM / BLU**), kartu BLU & RM, grafik Target vs Realisasi, target per jenis belanja, tabel **Kegiatan Belanja / Kertas Kerja POK** (pilih lewat judul tabel) |
-| `/belanja`    | Catat dokumen belanja (bagian pengadaan; nilai berformat *5.000.000* + terbilang, tidak dibatasi sisa anggaran); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; filter status, dana, "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
+| `/belanja`    | Catat dokumen belanja (bagian pengadaan; nilai berformat *5.000.000* + terbilang, tidak dibatasi sisa anggaran); status **Belum dicairkan → Dicairkan → Disahkan** beserta nomor rekapnya; tabel RM / BLU terpisah (tombol **RM \| BLU**), filter status & "Catatan saya"; edit/hapus oleh pencatat; cetak lembar dokumen belanja |
 | `/aktivitas`  | Riwayat aktivitas (jejak audit): siapa, kapan, dokumen apa, apa yang berubah; lacak paket (PKT-…), dokumen (BLJ-…), atau rekap (CAIR-… / SAH-…); ekspor CSV |
-| `/pencairan`  | **Daftar** berceklist (tab Semua / RM / BLU) → **Cairkan**; **Riwayat Pencairan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah dicairkan (status pengesahan, batal rekap) |
-| `/pengesahan` | **Daftar** kegiatan yang sudah dicairkan (berceklist) → **Sahkan** (cek *Sisa anggaran per MAK*, terkunci bila kurang); **Riwayat Pengesahan** berupa tabel rekapan → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
+| `/pencairan`  | Tombol **RM \| BLU**; **Daftar** berceklist per sumber dana → **Cairkan** (satu rekap untuk dana tabel itu); **Riwayat Pencairan** berupa tabel rekapan per dana → *Lihat daftar* kegiatan yang sudah dicairkan (status pengesahan, batal rekap) |
+| `/pengesahan` | Tombol **RM \| BLU**; **Daftar** kegiatan yang sudah dicairkan (berceklist, per dana) → **Sahkan** (cek *Sisa anggaran per MAK*, terkunci bila kurang); **Riwayat Pengesahan** berupa tabel rekapan per dana → *Lihat daftar* kegiatan yang sudah disahkan (batal rekap) |
 | `/referensi`  | Akun belanja, unit kerja, penyedia (termasuk pimpinan, alamat, NPWP, bank, rekening), sumber dana (tambah & ubah oleh Administrator) |
 | `/pengguna`   | Kelola pengguna, peran, status, data penanda tangan PPK & Pejabat Pengadaan (NIP, pangkat, SK), atur ulang kata sandi (khusus Administrator) |
 

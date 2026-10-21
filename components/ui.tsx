@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ClipboardReact, type FormEvent, type KeyboardEvent as KeyboardReact, type ReactNode } from "react";
 import Icon from "./Icon";
+import { DAFTAR_DANA, NAMA_DANA, type Dana } from "@/lib/data";
 import { desimal } from "@/lib/format";
 
 /* ---------- Judul halaman ---------- */
@@ -31,14 +32,76 @@ export function Badge({ tone = "", children }: { tone?: Tone; children: ReactNod
 /* ---------- Badge sumber dana ----------
    Warna tetap per dana agar langsung terbedakan di semua tabel:
    RM gelap, BLU oranye — sama dengan kartu RM & BLU di Dashboard dan warna di Referensi. */
-const NAMA_DANA: Record<string, string> = { RM: "Rupiah Murni", BLU: "PNBP BLU" };
-
 export function BadgeDana({ dana }: { dana: string }) {
   const kelas = dana === "RM" ? "dana-rm" : dana === "BLU" ? "dana-blu" : "";
   return (
-    <span className={`badge dana ${kelas}`} title={NAMA_DANA[dana]}>
+    <span className={`badge dana ${kelas}`} title={NAMA_DANA[dana as Dana]}>
       {dana}
     </span>
+  );
+}
+
+/* ---------- Tombol tabel per sumber dana (RM | BLU) ----------
+   Tabel Pengadaan, Belanja, Pencairan, dan Pengesahan dipisah per sumber dana. Tombol ini memindah tabel;
+   pilihannya sama di keempat modul (danaAktif di StoreProvider). Warna sama dengan BadgeDana. */
+export function PilihDana({
+  value,
+  onChange,
+  info,
+  tugas,
+}: {
+  value: Dana;
+  onChange: (d: Dana) => void;
+  /** ringkasan di bawah nama dana, mis. "9 dokumen · Rp123,9 jt" */
+  info: Record<Dana, ReactNode>;
+  /** jumlah yang menunggu tindakan pengguna di tiap tabel (tampil sebagai lencana bila > 0) */
+  tugas?: Partial<Record<Dana, number>>;
+}) {
+  return (
+    <div className="pilih-dana" role="group" aria-label="Tabel sumber dana">
+      {DAFTAR_DANA.map((d) => {
+        const on = d === value;
+        return (
+          <button
+            key={d}
+            type="button"
+            className={`${d === "RM" ? "rm" : "blu"} ${on ? "on" : ""}`}
+            aria-pressed={on}
+            title={on ? `Tabel ${d} sedang ditampilkan` : `Pindah ke tabel ${d}`}
+            onClick={() => onChange(d)}
+          >
+            <span className="pd-kode">{d}</span>
+            <span className="pd-teks">
+              <b>
+                Tabel {d} <span className="pd-nama">· {NAMA_DANA[d]}</span>
+              </b>
+              <small>{info[d]}</small>
+            </span>
+            {(tugas?.[d] ?? 0) > 0 && (
+              <span className="count" title={`${tugas?.[d]} menunggu tindakan Anda di tabel ${d}`}>
+                {tugas?.[d]}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Ajakan pindah tabel bila hasil saringan/pencarian ada di tabel sumber dana lain */
+export function DiTabelLain({ jumlah, dana, satuan, onBuka }: { jumlah: number; dana: Dana; satuan: string; onBuka: () => void }) {
+  if (jumlah <= 0) return null;
+  return (
+    <p className="di-tabel-lain" role="status">
+      <Icon name="info" />
+      <span>
+        {jumlah} {satuan} yang cocok ada di tabel {dana}.
+      </span>
+      <button type="button" className="btn soft sm" onClick={onBuka}>
+        Buka tabel {dana}
+      </button>
+    </p>
   );
 }
 

@@ -17,8 +17,8 @@ import Icon from "@/components/Icon";
 import InputNomor, { nomorAwal, nomorLengkap, type NilaiNomor } from "@/components/InputNomor";
 import { TONE_BELANJA } from "@/components/modules/Belanja";
 import { useStore } from "@/components/StoreProvider";
-import { BadgeDana, Dialog, EmptyRow, Field, InputRupiah, Modal, PageHead, Saring, SearchBox, Status, Tabs, type Tone } from "@/components/ui";
-import { akunSesuaiDana } from "@/lib/data";
+import { BadgeDana, Dialog, DiTabelLain, EmptyRow, Field, InputRupiah, Modal, PageHead, PilihDana, Saring, SearchBox, Status, Tabs, type Tone } from "@/components/ui";
+import { akunSesuaiDana, type Dana } from "@/lib/data";
 import { hariIni, rupiah, rupiahSingkat, tanggal } from "@/lib/format";
 import { akunDariMak } from "@/lib/mak";
 import {
@@ -58,7 +58,6 @@ const MENUNGGU: Record<TahapPaket, string> = {
 };
 
 type FilterTahap = "Semua" | "1" | "2" | "3" | "4";
-type FilterDana = "Semua" | "RM" | "BLU";
 type JenisForm = "nd" | "sp" | "nota" | "kw" | "batal" | "hapus";
 type FormAktif = { jenis: JenisForm; id?: string };
 
@@ -102,10 +101,9 @@ function tanggalBawaan(min: string, tahun: number) {
 }
 
 export default function Pengadaan() {
-  const { paket, kegiatan, pengguna, penggunaAktif, referensi, infoPengguna, namaUnit } = useStore();
+  const { paket, kegiatan, pengguna, penggunaAktif, referensi, infoPengguna, namaUnit, namaAkun, danaAktif: dana, pilihDana } = useStore();
   const hak = useHakPaket();
   const [tab, setTab] = useState<FilterTahap>("Semua");
-  const [dana, setDana] = useState<FilterDana>("Semua");
   const [saya, setSaya] = useState<"Semua" | "Saya">("Semua");
   const [cari, setCari] = useState("");
   const [detail, setDetail] = useState<string | null>(null);
@@ -123,25 +121,29 @@ export default function Pengadaan() {
   const belanjaDari = (p: Paket) => (p.pengajuanId ? kegiatan.find((k) => k.id === p.pengajuanId) : undefined);
   const namaPenyedia = (p: Paket) => p.arsip?.penyedia?.nama ?? referensi.penyedia.find((x) => x.id === p.penyediaId)?.nama;
 
-  const baris = useMemo(() => {
+  // Tabel per sumber dana: kartu tahap, tab, dan tabel hanya berisi paket dana yang dipilih
+  const lain: Dana = dana === "RM" ? "BLU" : "RM";
+  const paketDana = useMemo(() => paket.filter((p) => p.dana === dana), [paket, dana]);
+  const cocok = useMemo(() => {
     const q = cari.trim().toLowerCase();
-    return paket.filter(
-      (p) =>
-        (tab === "Semua" || String(p.tahap) === tab) &&
-        (dana === "Semua" || p.dana === dana) &&
-        (saya === "Semua" || hak.berikut(p) !== null) &&
-        (!q ||
-          [p.id, p.pekerjaan, p.mak, p.nd.nomor, p.sp?.nomor, p.kwitansi?.nomor, p.pengajuanId, namaPenyedia(p), namaUnit(p.unit), infoPengguna(p.ppkId).nama, p.ppId ? infoPengguna(p.ppId).nama : ""]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)),
-    );
+    return (p: Paket) =>
+      (tab === "Semua" || String(p.tahap) === tab) &&
+      (saya === "Semua" || hak.berikut(p) !== null) &&
+      (!q ||
+        [p.id, p.pekerjaan, p.mak, p.nd.nomor, p.sp?.nomor, p.kwitansi?.nomor, p.pengajuanId, namaPenyedia(p), namaUnit(p.unit), infoPengguna(p.ppkId).nama, p.ppId ? infoPengguna(p.ppId).nama : ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(q));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paket, tab, dana, saya, cari, referensi.penyedia, namaUnit, infoPengguna]);
+  }, [tab, saya, cari, referensi.penyedia, namaUnit, infoPengguna, hak]);
+  const baris = useMemo(() => paketDana.filter(cocok), [paketDana, cocok]);
 
-  const perTahap = (t: TahapPaket) => paket.filter((p) => p.tahap === t);
-  const tugasSaya = paket.filter((p) => hak.berikut(p) !== null).length;
-  const adaFilter = dana !== "Semua" || saya !== "Semua" || cari !== "";
+  const perTahap = (t: TahapPaket) => paketDana.filter((p) => p.tahap === t);
+  const tugasSaya = paketDana.filter((p) => hak.berikut(p) !== null).length;
+  const adaFilter = saya !== "Semua" || cari !== "";
+  const cocokLain = adaFilter ? paket.filter((p) => p.dana === lain && cocok(p)).length : 0;
+  const nilaiDana = (d: Dana) => paket.filter((p) => p.dana === d).reduce((s, p) => s + nilaiPaket(p), 0);
+  const jumlahDana = (d: Dana) => paket.filter((p) => p.dana === d).length;
 
   // Data penanda tangan akun sendiri (PPK / Pejabat Pengadaan) yang belum diisi
   const profil = pengguna.find((u) => u.id === penggunaAktif.id) ?? penggunaAktif;
@@ -196,7 +198,27 @@ export default function Pengadaan() {
         </p>
       )}
 
-      <ol className="alur-paket" aria-label="Tahap pengadaan">
+      <PilihDana
+        value={dana}
+        onChange={(d) => {
+          pilihDana(d);
+          setDetail(null);
+        }}
+        info={{
+          RM: `${jumlahDana("RM")} paket · ${rupiahSingkat(nilaiDana("RM"))}`,
+          BLU: `${jumlahDana("BLU")} paket · ${rupiahSingkat(nilaiDana("BLU"))}`,
+        }}
+        tugas={
+          hak.bisaPpk || hak.bisaPp
+            ? {
+                RM: paket.filter((p) => p.dana === "RM" && hak.berikut(p) !== null).length,
+                BLU: paket.filter((p) => p.dana === "BLU" && hak.berikut(p) !== null).length,
+              }
+            : undefined
+        }
+      />
+
+      <ol className="alur-paket" aria-label={`Tahap pengadaan ${dana}`}>
         {TAHAP.map((t) => {
           const xs = perTahap(t.tahap);
           const nilai = xs.reduce((s, x) => s + nilaiPaket(x), 0);
@@ -225,28 +247,18 @@ export default function Pengadaan() {
         })}
       </ol>
 
-      <section className="panel">
+      <section className="panel" aria-label={`Tabel paket pengadaan ${dana}`}>
         <div className="ph">
           <Tabs<FilterTahap>
             label="Filter tahap"
             value={tab}
             onChange={setTab}
             items={[
-              { value: "Semua", label: `Semua · ${paket.length}` },
+              { value: "Semua", label: `Semua · ${paketDana.length}` },
               ...TAHAP.map((t) => ({ value: String(t.tahap) as FilterTahap, label: `${t.singkat} · ${perTahap(t.tahap).length}` })),
             ]}
           />
           <div className="tbar filter-kegiatan">
-            <Saring<FilterDana>
-              label="Sumber dana"
-              value={dana}
-              onChange={setDana}
-              opsi={[
-                { value: "Semua", label: "Semua dana" },
-                { value: "RM", label: "RM" },
-                { value: "BLU", label: "BLU" },
-              ]}
-            />
             {(hak.bisaPpk || hak.bisaPp) && (
               <Saring<"Semua" | "Saya">
                 label="Tugas"
@@ -264,7 +276,6 @@ export default function Pengadaan() {
                 type="button"
                 className="btn soft sm"
                 onClick={() => {
-                  setDana("Semua");
                   setSaya("Semua");
                   setCari("");
                 }}
@@ -281,12 +292,13 @@ export default function Pengadaan() {
             Masuk sebagai <b>{penggunaAktif.nama}</b> ({penggunaAktif.peran}) · {keterangan}
           </span>
         </p>
+        <DiTabelLain jumlah={cocokLain} dana={lain} satuan="paket" onBuka={() => pilihDana(lain)} />
         <div className="tw stack">
           <table className="tabel-paket">
             <thead>
               <tr>
                 <th>Paket Pekerjaan</th>
-                <th>Sumber Dana</th>
+                <th>Akun</th>
                 <th>Pejabat</th>
                 <th>Penyedia</th>
                 <th className="r">Nilai</th>
@@ -297,11 +309,11 @@ export default function Pengadaan() {
             <tbody>
               {baris.length === 0 ? (
                 <EmptyRow cols={7}>
-                  {paket.length === 0
+                  {paketDana.length === 0
                     ? hak.bisaPpk
-                      ? "Belum ada paket pengadaan. Klik Buat Nota Dinas untuk memulai."
-                      : "Belum ada paket pengadaan. Paket dimulai dari Nota Dinas yang diterbitkan PPK."
-                    : "Tidak ada paket yang cocok dengan filter."}
+                      ? `Belum ada paket pengadaan ${dana}. Klik Buat Nota Dinas untuk memulai.`
+                      : `Belum ada paket pengadaan ${dana}. Paket dimulai dari Nota Dinas yang diterbitkan PPK.`
+                    : `Tidak ada paket ${dana} yang cocok dengan filter.`}
                 </EmptyRow>
               ) : (
                 baris.map((x) => {
@@ -328,9 +340,9 @@ export default function Pengadaan() {
                           </div>
                         </div>
                       </td>
-                      <td data-label="Sumber Dana">
-                        <BadgeDana dana={x.dana} />
-                        <span className="mono note">{x.mak.split(".").pop()}</span>
+                      <td data-label="Akun" title={namaAkun(x.mak.split(".").pop() ?? "")}>
+                        <span className="mono">{x.mak.split(".").pop()}</span>
+                        <div className="note akun-ur">{namaAkun(x.mak.split(".").pop() ?? "")}</div>
                       </td>
                       <td data-label="Pejabat" className="sel-pejabat">
                         <span>
@@ -400,9 +412,12 @@ export default function Pengadaan() {
       {form?.jenis === "nd" && (
         <FormNotaDinas
           awal={p}
+          danaAwal={dana}
           onClose={() => setForm(null)}
           onSaved={(baru) => {
             setForm(null);
+            // paket tampil di tabel sumber dananya
+            if (baru.dana !== dana && (baru.dana === "RM" || baru.dana === "BLU")) pilihDana(baru.dana);
             if (!p) {
               setTab("Semua");
               setDetail(baru.id);
@@ -662,12 +677,23 @@ let kunciItem = 0;
 const itemKosong = (): IsianItem => ({ kunci: ++kunciItem, uraian: "", spesifikasi: "", jumlah: "", satuan: "", hargaHps: "", ket: "" });
 const SATUAN = ["pcs", "buah", "unit", "paket", "set", "rim", "lusin", "box", "dus", "kg", "liter", "lembar", "eksemplar", "orang", "kegiatan", "bulan"];
 
-function FormNotaDinas({ awal, onClose, onSaved }: { awal?: Paket; onClose: () => void; onSaved: (p: Paket) => void }) {
+function FormNotaDinas({
+  awal,
+  danaAwal,
+  onClose,
+  onSaved,
+}: {
+  awal?: Paket;
+  /** paket baru: sumber dana tabel yang sedang dibuka */
+  danaAwal?: Dana;
+  onClose: () => void;
+  onSaved: (p: Paket) => void;
+}) {
   const { referensi, daftarMak, pengguna, penggunaAktif, simpanNotaDinas, toast } = useStore();
   const admin = penggunaAktif.peran === "Administrator";
   const [pekerjaan, setPekerjaan] = useState(awal?.pekerjaan ?? "");
   const [unit, setUnit] = useState(awal?.unit ?? "");
-  const [dana, setDana] = useState<string>(awal?.dana ?? "");
+  const [dana, setDana] = useState<string>(awal?.dana ?? danaAwal ?? "");
   const [mak, setMak] = useState(awal?.mak ?? "");
   const [tgl, setTgl] = useState(awal?.nd.tanggal ?? hariIni());
   const [nomor, setNomor] = useState<NilaiNomor>(() => nomorAwal("nd", awal?.nd.nomor));

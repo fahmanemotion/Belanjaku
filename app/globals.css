@@ -1439,3 +1439,54 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .dok-hal img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .dok-tabel tr, .ttd-blok, .ttd-dua { break-inside: avoid; }
 }
+
+/* ---------- Tabel per sumber dana: tombol RM | BLU (Pengadaan, Belanja, Pencairan, Pengesahan) ----------
+   Warna sama dengan badge dana: RM gelap, BLU oranye. Tombol aktif terisi warna dananya. */
+/* lebar tombol = lebar satu kartu ringkasan di bawahnya (grid 4 kolom yang sama dengan .stats) */
+.pilih-dana { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0 0 var(--gap); }
+.pilih-dana button {
+  display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 16px; border-radius: 18px;
+  background: var(--panel); border: 1.5px solid var(--line); color: var(--ink); text-align: left; box-shadow: var(--shadow);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.pilih-dana button:hover:not(.on) { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
+.pilih-dana button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pd-kode { flex: none; display: grid; place-items: center; min-width: 52px; height: 36px; padding: 0 10px; border-radius: 11px; font-weight: 800; font-size: 13.5px; letter-spacing: 0.04em; }
+.pilih-dana .rm .pd-kode { background: var(--ink); color: var(--panel); }
+.pilih-dana .blu .pd-kode { background: var(--accent); color: var(--on-accent); }
+.pd-teks { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.pd-teks b { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-nama { font-weight: 600; opacity: 0.7; }
+.pd-teks small { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pilih-dana .rm.on { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.pilih-dana .rm.on .pd-kode { background: var(--panel); color: var(--ink); }
+.pilih-dana .blu.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.pilih-dana .blu.on .pd-kode { background: var(--on-accent); color: var(--accent); }
+.pilih-dana .on small { color: inherit; opacity: 0.8; }
+.pilih-dana .count { flex: none; }
+.pilih-dana .on .count { background: var(--panel); color: var(--ink); }
+.pilih-dana .blu.on .count { background: var(--on-accent); color: var(--accent); }
+
+/* Baris yang dicentang tetap berwarna saat disorot mouse, termasuk kolom uraian yang menempel di kiri */
+.tabel-pilih.tabel-kegiatan tbody tr.dipilih td,
+.tabel-pilih.tabel-kegiatan tbody tr.dipilih:hover td.main { background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+
+/* Hasil pencarian/saringan yang ada di tabel sumber dana lain */
+.di-tabel-lain { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 14px; padding: 10px 12px; border-radius: 14px; background: var(--info-bg); color: var(--info); font-size: 13px; font-weight: 600; }
+.di-tabel-lain svg { width: 16px; height: 16px; flex: none; }
+.di-tabel-lain span { flex: 1 1 220px; }
+
+@media (max-width: 1024px) {
+  .pilih-dana { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .pilih-dana { gap: 8px; }
+  .pilih-dana button { padding: 10px 12px; gap: 10px; border-radius: 16px; }
+  .pd-kode { min-width: 44px; height: 32px; font-size: 12.5px; border-radius: 10px; }
+  .pd-teks b { font-size: 13px; }
+  .pd-nama { display: none; }
+  .pd-teks small { font-size: 11.5px; white-space: normal; }
+}
+@media print {
+  .pilih-dana, .di-tabel-lain { display: none; }
+}

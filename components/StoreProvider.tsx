@@ -14,6 +14,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { bolehModul, type Izin, type Modul } from "@/lib/akses";
+import type { Dana } from "@/lib/data";
 import {
   kePengguna,
   muatAktivitas,
@@ -178,6 +179,11 @@ interface StoreValue {
   /** nama & peran pengguna, termasuk yang sudah dihapus (untuk riwayat) */
   infoPengguna: (id: string) => { nama: string; peran: string };
 
+  /* Tabel per sumber dana (Pengadaan, Belanja, Pencairan, Pengesahan) */
+  /** sumber dana tabel yang sedang dibuka — sama di keempat modul dan diingat di browser ini */
+  danaAktif: Dana;
+  pilihDana: (d: Dana) => void;
+
   toast: (pesan: string) => void;
 }
 
@@ -190,6 +196,8 @@ export function useStore(): StoreValue {
 }
 
 const PROFIL_KOSONG: Pengguna = { id: "", nama: "", email: "", peran: "Operator Pengadaan", aktif: false };
+/** kunci penyimpanan browser untuk pilihan tabel RM / BLU */
+const KUNCI_DANA = "belanjaku:dana-tabel";
 const REFERENSI_KOSONG: Referensi = { akun: [], unit: [], penyedia: [], dana: [] };
 
 /** Pesan galat login Supabase Auth dalam bahasa Indonesia */
@@ -229,6 +237,25 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  /* ---------- Tabel per sumber dana: pilihan RM / BLU diingat di browser ini ---------- */
+  const [danaAktif, setDanaAktif] = useState<Dana>("RM");
+  useEffect(() => {
+    try {
+      const d = window.localStorage.getItem(KUNCI_DANA);
+      if (d === "RM" || d === "BLU") setDanaAktif(d);
+    } catch {
+      /* penyimpanan browser tidak tersedia: tetap RM */
+    }
+  }, []);
+  const pilihDana = useCallback((d: Dana) => {
+    setDanaAktif(d);
+    try {
+      window.localStorage.setItem(KUNCI_DANA, d);
+    } catch {
+      /* abaikan: pilihan tetap berlaku sampai halaman dimuat ulang */
+    }
   }, []);
 
   /* ---------- Muat & segarkan data ---------- */
@@ -801,6 +828,8 @@ export default function StoreProvider({ children }: { children: ReactNode }) {
     namaUnit,
     namaAkun,
     infoPengguna,
+    danaAktif,
+    pilihDana,
     toast,
   };
 

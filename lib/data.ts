@@ -17,6 +17,10 @@ export type JenisBelanja = "Pegawai" | "Barang" | "Modal";
 
 export const FILTER_DANA: FilterDana[] = ["Gabung", "RM", "BLU"];
 
+/** Sumber dana yang tabelnya dipisah di Pengadaan, Belanja, Pencairan, dan Pengesahan (tombol RM | BLU) */
+export const DAFTAR_DANA: Dana[] = ["RM", "BLU"];
+export const NAMA_DANA: Record<Dana, string> = { RM: "Rupiah Murni", BLU: "PNBP BLU" };
+
 /**
  * Jenis belanja ditentukan dari 2 digit depan kode akun:
  * 51 = Belanja Pegawai, 52 = Belanja Barang, 53 = Belanja Modal.
