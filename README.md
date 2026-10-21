@@ -62,14 +62,18 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 
 | Tahap | Pelaku | Isian | Dokumen tercetak |
 |---|---|---|---|
-| 1. Nota Dinas & HPS | **PPK** | Pekerjaan, unit kerja, sumber dana, MAK, nomor & tanggal Nota Dinas, **tabel HPS bergaya Excel** (uraian, baris spesifikasi, jumlah, satuan, harga satuan, keterangan), PPN 11% | Nota Dinas *Perintah Pengadaan Barang/Jasa*, HPS (*Daftar Paket Pekerjaan*) |
+| 1. Nota Dinas & HPS | **PPK** | Pekerjaan, unit kerja, sumber dana, MAK, nomor & tanggal Nota Dinas, **tabel HPS bergaya Excel** (uraian beserta spesifikasinya di kolom Uraian, jumlah, satuan, harga satuan, keterangan), PPN 11% | Nota Dinas *Perintah Pengadaan Barang/Jasa*, HPS (*Daftar Paket Pekerjaan*) |
 | 2. Surat Pesanan | **Pejabat Pengadaan** | Penyedia (pilih dari Referensi atau tambah baru) + data pembayarannya, nomor & tanggal SP, batas waktu (hari); tabel barang yang dipesan tampil di bawahnya | Surat Pesanan |
 | 3. Nota Pembelian | **Pejabat Pengadaan** | Tanggal nota, **tabel harga** satuan pembelian per barang (bawaan = HPS; total tidak boleh melebihi HPS), PPN 11% | Nota / Bukti Pembelian |
 | 4. Kwitansi, BAP & BAST | **PPK** | Nomor & tanggal Kwitansi, BAP, BAST; tanda √ kolom *MEMENUHI* di Lampiran BAP; tabel lampiran tampil di bawahnya | Kwitansi + Lampiran, BAP + Lampiran, BAST + Lampiran |
 
 - **Isian barang/jasa bergaya Excel** (form Nota Dinas & HPS dan Nota Pembelian). Kolomnya sama dengan sheet HPS
-  (No · Uraian · Jumlah · Satuan · Harga Satuan · Total Jumlah · Ket), baris spesifikasi "- …" di bawah uraiannya, lalu baris
-  JUMLAH, PPN 11% (kotak centang), TOTAL JUMLAH, dan terbilang yang dihitung langsung.
+  (No · Uraian · Jumlah · Satuan · Harga Satuan · Total Jumlah · Ket), lalu baris JUMLAH, PPN 11% (kotak centang), TOTAL JUMLAH,
+  dan terbilang yang dihitung langsung.
+  - **Spesifikasi ditulis di kolom Uraian** seperti sheet HPS: pada baris di bawah barangnya, diawali `-` lalu spasi
+    (`- Hydro Flask 220 ml`). Mengetik `- ` di awal Uraian baris kosong tepat di bawah barang menjadikan baris itu spesifikasi
+    barang tersebut; sel Jumlah s.d. Ket baris spesifikasi kosong. `Backspace` di awal teks spesifikasi menjadikannya barang lagi.
+    Karena berada di kolom Uraian, spesifikasi ikut terblok, tersalin, dan tertempel bersama kolom Uraian.
   - **Keyboard**: `Tab` / `Shift+Tab` pindah kolom; `Enter` turun ke baris berikutnya dan kembali ke kolom tempat mulai menekan Tab
     (di baris terakhir yang sudah terisi menambah baris baru); panah pindah sel; `Alt/⌥+Enter` (atau `Shift+Enter`) menambah baris
     spesifikasi; `Enter` di baris spesifikasi kosong mengakhiri daftar spesifikasi; `Backspace` di baris spesifikasi kosong menghapusnya;
@@ -100,8 +104,9 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
       spesifikasinya; isi kolom Spesifikasi dan sel berbaris banyak juga dipecah menjadi baris spesifikasi;
     - angka "Rp1.500.000,-", "1,500,000.00", dan volume bersatuan "10 pcs" / "5 org x 2 hr" terbaca; harga satuan dihitung dari
       total ÷ jumlah bila kolom harga satuan tidak ada; salinan yang memuat baris PPN mencentang PPN 11%;
-    - hasilnya langsung masuk mulai sel kiri-atas blok yang dipilih (seperti tempel di Excel; isian yang tidak dimuat salinan tetap);
-      bila kursor tidak di sel mana pun, ditambahkan di bawah barang yang ada. Salinan yang susunan kolomnya sama cukup ditandai blok
+    - hasilnya langsung masuk mulai sel kiri-atas blok yang dipilih (seperti tempel di Excel; isian yang tidak dimuat salinan tetap,
+      sedangkan Uraian yang ditimpa membawa spesifikasi dari salinan); baris spesifikasi saja yang ditempel di Uraian baris kosong
+      di bawah barang menjadi spesifikasi barang itu; bila kursor tidak di sel mana pun, ditambahkan di bawah barang yang ada. Salinan yang susunan kolomnya sama cukup ditandai blok
       hasil tempel; bila kolom dikenali dari judul/isinya, ada baris yang dilewati, atau ada catatan, **bilah hasil** di atas tabel
       menyebutnya, dengan tombol **Atur kolom & baris…** (ubah arti tiap kolom, jenis tiap baris — barang / spesifikasi / lewati —
       dan cara memasukkan: tambahkan di bawah, timpa mulai baris tertentu, atau ganti semua) dan **Urungkan**. Salinan yang belum
@@ -415,6 +420,7 @@ belanjaku-pip/
 | Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default** (bukan *Minimum*/*Kustom*). Chrome & Edge tidak mencetak tanggal/URL bila margin Default; di Safari / Firefox matikan **Header dan footer**. |
 | NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
 | Daftar dari Excel masuk ke kolom yang salah saat ditempel | Klik **Atur kolom & baris…** di bilah hasil tempel, pilih arti kolom yang benar (atau ubah jenis baris), lalu **Masukkan** — atau **Urungkan** (`Ctrl/⌘+Z`). Ikut menyalin baris judul kolom (Uraian, Volume, Satuan, Harga Satuan, Jumlah) membuat pengenalan otomatis paling tepat. |
+| Spesifikasi yang diketik malah menjadi barang baru | Ketik `-` lalu spasi di awal sel Uraian pada baris **kosong** tepat di bawah barangnya (atau `Alt/⌥+Enter` / tombol **+**). Baris yang sudah berisi jumlah/satuan/harga tetap dianggap barang. |
 | Seret mouse di tabel malah memilih teks, bukan memblok sel | Sel itu sedang disunting (kursor di dalam teks). Tekan `Esc` / `Enter` atau klik sel lain dulu, lalu seret. Blok sel memakai mouse/trackpad; di HP sel cukup diketuk. |
 | Tombol **Tempel dari Excel** tidak membaca salinan | Browser meminta izin membaca clipboard — pilih **Izinkan**. Bila izin ditolak, klik sel Uraian di tabel lalu tekan `⌘V` / `Ctrl+V`. |
 | Form pengadaan tidak tertutup saat menekan Esc | Disengaja: setelah ada isian, Esc / klik di luar tidak menutup form agar daftar barang tidak hilang. Tutup lewat **Batal** atau **×**. |

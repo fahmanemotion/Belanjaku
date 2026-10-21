@@ -1600,10 +1600,8 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .grid-excel td.g-pilih.g-salin::after { border-style: dashed; }
 .grid-excel thead th.g-pilih-kolom, .grid-excel tbody td.g-no.g-pilih-baris { background-color: color-mix(in srgb, var(--accent) 16%, var(--sub)); color: var(--accent); }
 /* petunjuk tabel: pintasan mouse & keyboard hanya untuk laptop/PC; layar sentuh cukup ketuk sel */
-.tabel-isian-petunjuk .tip-sentuh { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .tabel-isian-petunjuk .tip-mouse { display: none; }
-  .tabel-isian-petunjuk .tip-sentuh { display: inline; }
 }
 
 /* Tempel dari Excel: bilah hasil & dialog atur kolom/baris */
