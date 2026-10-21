@@ -1432,6 +1432,10 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .pratinjau-dok .dok-hal + .dok-hal { break-before: page; }
   /* tinggi area cetak A4 dikurangi margin atas & bawah (12 mm + 12 mm) → kaki halaman di dasar kertas */
   .pratinjau-dok .dok-hal.ada-kaki { min-height: 272mm; }
+  /* Chrome/Edge: halaman pertama tanpa margin atas & bawah (@page :first di CetakPengadaan) supaya tanggal, judul,
+     dan URL dari browser tidak ikut tercetak; jarak 12 mm-nya dipindah menjadi padding lembar pertama */
+  .pratinjau-dok.tanpa-header-browser .dok-hal:first-child { padding-top: 12mm; padding-bottom: 12mm; }
+  .pratinjau-dok.tanpa-header-browser .dok-hal.ada-kaki:first-child { min-height: 296mm; }
   .dok-hal img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .dok-tabel tr, .ttd-blok, .ttd-dua { break-inside: avoid; }
 }

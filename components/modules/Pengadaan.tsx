@@ -10,8 +10,8 @@
  * Satu tahap bisa diubah selama tahap berikutnya belum terbit; tahap terakhir bisa dibatalkan (dengan alasan).
  * Aturan yang sama diperiksa ulang di database (supabase/migrations/20261020090000_pengadaan_kwitansi.sql).
  */
-import { useMemo, useState, type ReactNode } from "react";
-import CetakPengadaan from "@/components/CetakPengadaan";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import Combobox, { type OpsiCombo } from "@/components/Combobox";
 import Icon from "@/components/Icon";
 import InputNomor, { nomorAwal, nomorLengkap, type NilaiNomor } from "@/components/InputNomor";
@@ -37,6 +37,17 @@ import {
   type KodeDokumen,
 } from "@/lib/pengadaan";
 import type { DataPenyedia, Kegiatan, Paket, TahapPaket } from "@/lib/types";
+
+/** Pratinjau cetak (10 templat dokumen + kop & logo yang tertanam di kode) dimuat terpisah agar halaman tetap ringan */
+const muatCetak = () => import("@/components/CetakPengadaan");
+const CetakPengadaan = dynamic(muatCetak, {
+  ssr: false,
+  loading: () => (
+    <div className="pratinjau pratinjau-dok" role="status" aria-live="polite">
+      <p className="pratinjau-kosong">Menyiapkan dokumen…</p>
+    </div>
+  ),
+});
 
 const TONE_TAHAP: Record<TahapPaket, Tone> = { 1: "w", 2: "i", 3: "p", 4: "g" };
 const MENUNGGU: Record<TahapPaket, string> = {
@@ -101,6 +112,12 @@ export default function Pengadaan() {
   const [form, setForm] = useState<FormAktif | null>(null);
   const [cetak, setCetak] = useState<{ id: string; dokumen: KodeDokumen[] } | null>(null);
   const [dataSaya, setDataSaya] = useState(false);
+
+  // Unduh modul cetak di latar belakang setelah halaman tampil, supaya pratinjau langsung terbuka saat dipakai
+  useEffect(() => {
+    const t = window.setTimeout(() => void muatCetak().catch(() => undefined), 1500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const cariPaket = (id?: string) => paket.find((x) => x.id === id);
   const belanjaDari = (p: Paket) => (p.pengajuanId ? kegiatan.find((k) => k.id === p.pengajuanId) : undefined);

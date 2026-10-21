@@ -4,9 +4,13 @@
  * Pratinjau & cetak dokumen pengadaan (kertas A4) dengan format yang sama dengan berkas Excel
  * NODIN_KWITANSI.xlsx — urutan sheet:
  *   Nota Dinas · HPS · Surat Pesanan · Nota Pembelian · Kwitansi · Lampiran Kwitansi · BAP · Lampiran BAP · BAST · Lampiran BAST
- * Kop surat & logo kaki halaman: public/dokumen/. Setelah kwitansi terbit, data penyedia & pejabat diambil dari
- * arsip paket (salinan saat kwitansi terbit) agar cetakan ulang tetap sama walau referensi diubah.
- * Setiap kali tombol Cetak ditekan, aksinya dicatat di Riwayat Aktivitas.
+ * Kop surat & logo kaki halaman: lib/gambarDokumen.ts (data URI, ikut tertanam di kode). Setelah kwitansi terbit,
+ * data penyedia & pejabat diambil dari arsip paket (salinan saat kwitansi terbit) agar cetakan ulang tetap sama
+ * walau referensi diubah. Setiap kali tombol Cetak ditekan, aksinya dicatat di Riwayat Aktivitas.
+ *
+ * Cetak tanpa tanggal/judul/URL dari browser: halaman pertama diberi margin atas & bawah 0 (@page :first) dan
+ * jaraknya diganti padding pada lembar pertama (globals.css). Chrome hanya menambahkan header & footer bila
+ * halaman pertama punya ruang margin untuknya, jadi header & footer browser tidak tercetak di semua halaman.
  */
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -31,11 +35,23 @@ import {
   type Total,
 } from "@/lib/pengadaan";
 import type { DataPejabat, DataPenyedia, ItemPaket, Paket } from "@/lib/types";
+import { KOP_PIP, LOGO_KAN, LOGO_SGS_21001, LOGO_SGS_9001 } from "@/lib/gambarDokumen";
 
 /** Lebar kertas A4 dalam piksel CSS (210 mm) — untuk mengecilkan pratinjau di layar sempit */
 const LEBAR_A4 = 794;
 const INSTANSI = "Politeknik Ilmu Pelayaran Makassar";
 const KOSONG = "…………………………";
+
+/**
+ * Chrome, Edge, dan browser Chromium lain hanya menambahkan header & footer browser (tanggal, judul, URL) bila halaman
+ * pertama punya margin atas/bawah — pengaturan itu dipakai untuk semua halaman. Browser lain tetap memakai margin biasa.
+ */
+function browserChromium(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] } };
+  if (nav.userAgentData?.brands?.length) return nav.userAgentData.brands.some((b) => b.brand === "Chromium");
+  return /\b(Chrome|Chromium|Edg)\//.test(navigator.userAgent);
+}
 
 interface Data {
   p: Paket;
@@ -53,6 +69,7 @@ export default function CetakPengadaan({ p, awal, onClose }: { p: Paket; awal: K
   });
   const [siap, setSiap] = useState(false);
   const [skala, setSkala] = useState(1);
+  const [chromium] = useState(browserChromium);
   const isiRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,16 +114,25 @@ export default function CetakPengadaan({ p, awal, onClose }: { p: Paket; awal: K
   ].filter(Boolean) as string[];
 
   const ganti = (k: KodeDokumen) => setPilih((xs) => (xs.includes(k) ? xs.filter((x) => x !== k) : [...xs, k]));
-  const cetak = () => {
+  const cetak = async () => {
     if (!dicetak.length) return;
     catatCetakPaket(p, dicetak.map((x) => x.nama));
+    // pastikan kop & logo sudah siap digambar sebelum jendela cetak dibuka
+    const belum = Array.from(isiRef.current?.querySelectorAll("img") ?? []).filter((g) => !g.complete);
+    if (belum.length) await Promise.all(belum.map((g) => g.decode().catch(() => undefined)));
     window.print();
   };
 
   return createPortal(
-    <div className="pratinjau pratinjau-dok" role="dialog" aria-modal="true" aria-label={`Pratinjau dokumen ${p.id}`}>
-      {/* margin halaman cetak = margin kertas dokumen (lihat .dok-hal di globals.css) */}
-      <style>{"@page { size: A4; margin: 12mm 15mm 12mm 18mm; }"}</style>
+    <div
+      className={`pratinjau pratinjau-dok${chromium ? " tanpa-header-browser" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Pratinjau dokumen ${p.id}`}
+    >
+      {/* margin halaman cetak = margin kertas dokumen (lihat .dok-hal di globals.css). Di Chrome/Edge halaman pertama
+          tanpa margin atas & bawah (diganti padding lembar pertama) agar browser tidak mencetak tanggal, judul, dan URL. */}
+      <style>{`@page { size: A4; margin: 12mm 15mm 12mm 18mm; }${chromium ? " @page :first { margin-top: 0; margin-bottom: 0; }" : ""}`}</style>
       <div className="pratinjau-bar">
         <div>
           <b>Dokumen pengadaan</b>
@@ -165,14 +191,14 @@ export default function CetakPengadaan({ p, awal, onClose }: { p: Paket; awal: K
    ===================================================================== */
 function Kop() {
   // eslint-disable-next-line @next/next/no-img-element
-  return <img className="dok-kop" src="/dokumen/kop-pip.png" alt="Kop surat Politeknik Ilmu Pelayaran Makassar" />;
+  return <img className="dok-kop" src={KOP_PIP} alt="Kop surat Politeknik Ilmu Pelayaran Makassar" />;
 }
 
 function Kaki() {
   return (
     <div className="dok-kaki">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="kaki-kan" src="/dokumen/kan.png" alt="Komite Akreditasi Nasional" />
+      <img className="kaki-kan" src={LOGO_KAN} alt="Komite Akreditasi Nasional" />
       {/* motto selebar aslinya (11,9 cm) apa pun hurufnya: textLength memaksa lebar teks */}
       <svg className="kaki-moto" viewBox="0 0 1185 92" role="img" aria-label="Commited to the excellence of seafarer competence">
         <text x="0" y="70" textLength="1185" lengthAdjust="spacingAndGlyphs">
@@ -181,9 +207,9 @@ function Kaki() {
       </svg>
       <span className="kaki-sgs">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dokumen/sgs-9001.png" alt="SGS ISO 9001" />
+        <img src={LOGO_SGS_9001} alt="SGS ISO 9001" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/dokumen/sgs-21001.png" alt="SGS ISO 21001" />
+        <img src={LOGO_SGS_21001} alt="SGS ISO 21001" />
       </span>
     </div>
   );

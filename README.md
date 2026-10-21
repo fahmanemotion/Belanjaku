@@ -66,7 +66,8 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 - **Nomor dokumen** mengikuti pola berkas Excel; cukup isi bagian tengahnya, bulan (Romawi) dan tahun mengikuti tanggal dokumen:
   Nota Dinas & Kwitansi `PL.102/PPK/KO-RM/[100142]/X/PIP.MKS-2026`, Surat Pesanan `PL.102/PP/KO-RM/[100143]/X/PIP.MKS-2026`,
   BAP `PL.102/PPK-RM/BAP/[KODE-PAKET]/X/2026`, BAST `PL.102/PPK-RM/BAST/[KODE-PAKET]/X/PIP.MKS-2026`. Nomor yang polanya lain
-  bisa ditulis lengkap (*Tulis nomor lengkap*).
+  bisa ditulis lengkap (*Tulis nomor lengkap*). Nomor lengkap yang ditempel ke kolom tengah dikenali: bila polanya cocok
+  hanya bagian tengahnya yang dipakai, bila tidak cocok isian beralih ke *Tulis nomor lengkap*.
 - **Terbilang** (*… Rupiah.*), hari & tanggal dalam huruf di BAP/BAST (*Kamis tanggal Delapan Bulan Oktober Tahun Dua Ribu Dua Puluh Enam*),
   dan PPN 11% dihitung otomatis (PPN dibulatkan ke rupiah terdekat).
 - **Penanda tangan**: PPK paket (yang menerbitkan Nota Dinas) dan Pejabat Pengadaan yang menerbitkan Surat Pesanan. NIP, pangkat/golongan,
@@ -81,8 +82,11 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 - Dokumen belanja hasil paket hanya diubah lewat modul Pengadaan (di modul Belanja tombol ubah/hapusnya terkunci dan diberi label *dari paket PKT-…*).
 - Administrator boleh menjalankan semua tahap (memilih PPK / Pejabat Pengadaan penanda tangan). Peran lain hanya melihat dan mencetak.
 - **Cetak**: tombol cetak pada tiap tahap atau *Cetak semua* di rincian paket; pilih dokumen di bar atas pratinjau. Kertas A4, satu dokumen per
-  halaman. Di jendela cetak browser pilih ukuran **A4**, skala **100% / Default**, margin **Default**, dan matikan **Header dan footer**.
-  Kop surat & logo kaki halaman diambil dari `public/dokumen/`; motto kaki halaman memakai huruf *Brush Script MT* (tersedia di Windows & macOS).
+  halaman. Di jendela cetak browser pilih ukuran **A4**, skala **100% / Default**, dan margin **Default**. Di Chrome & Edge
+  tanggal, judul, dan alamat web dari browser otomatis tidak ikut tercetak (halaman pertama dicetak tanpa margin atas/bawah
+  browser, jaraknya diganti padding lembar); di Safari / Firefox matikan **Header dan footer** di jendela cetak.
+  Kop surat & logo kaki halaman **tertanam di kode** (`lib/gambarDokumen.ts`, data URI) sehingga tidak ada file gambar
+  terpisah yang perlu diunggah; motto kaki halaman memakai huruf *Brush Script MT* (tersedia di Windows & macOS).
 
 ### Sisa anggaran saat pengesahan
 
@@ -111,7 +115,7 @@ Mengikuti berkas `NODIN_KWITANSI.xlsx` (sheet pertama s.d. terakhir). Satu **pak
 |---|---|
 | Project | `belanjaku-pip` (ref `qqoltdrwlbeaeyjerszk`), region Singapore |
 | URL | `https://qqoltdrwlbeaeyjerszk.supabase.co` |
-| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja — **sudah dijalankan**<br>6. `supabase/migrations/20261020090000_pengadaan_kwitansi.sql` — modul Pengadaan (alur dokumen Kwitansi)<br>(4 dan 6: **jalankan sekali** lewat SQL Editor, boleh sekaligus dalam satu tempelan dengan urutan 4 lalu 6 — lihat *Memperbarui database*) |
+| Skema | 1. `supabase/migrations/20261018210500_belanjaku_skema.sql` — **sudah dijalankan**<br>2. `supabase/migrations/20261019090000_alur_rekap_pencairan.sql` — alur rekap pencairan & pengesahan — **sudah dijalankan**<br>3. `supabase/migrations/20261019103000_peran_operator_pengesahan.sql` — peran Operator Pengesahan — **sudah dijalankan**<br>4. `supabase/migrations/20261019150000_sisa_anggaran_saat_pengesahan.sql` — sisa anggaran diperiksa saat pengesahan — **jalankan sekali** (belum masuk produksi; ditempel lewat langkah v23)<br>5. `supabase/migrations/20261019160000_peran_baru_tanpa_unit.sql` — susunan peran baru, pengguna tanpa unit kerja — **sudah dijalankan**<br>6. `supabase/migrations/20261020090000_pengadaan_kwitansi.sql` — modul Pengadaan (alur dokumen Kwitansi) — **sudah dijalankan**<br>(4 aman dijalankan setelah 6 karena keduanya tidak mengubah fungsi yang sama — lihat *Memperbarui database*) |
 | Data awal | `supabase/seed/01_referensi.sql` (3 sumber dana, 8 unit kerja, 2 penyedia, 41 akun) dan `supabase/seed/02_pok_oktober_2026.sql` (FA Detail Oktober 2026: 462 MAK, 1.159 item, pagu Rp354.354.344.000) — **sudah dijalankan** |
 
 ### Memperbarui database (migrasi baru)
@@ -121,7 +125,9 @@ barunya di-push:
 
 1. Dashboard Supabase → **SQL Editor** → *New query*.
 2. Buka file migrasinya di VS Code, salin **seluruh** isinya, tempel, lalu **Run**. Bila muncul peringatan
-   *destructive operation*, pilih **Run this query**.
+   *destructive operation*, pilih **Run this query**. Dari Terminal Mac bisa juga `cat <file migrasi> | pbcopy` lalu
+   `open <alamat SQL Editor>`; jangan menyalin teks lain (termasuk alamat SQL Editor) sebelum menempel, karena isi
+   clipboard akan tertimpa.
 3. Berhasil bila tertulis *Success. No rows returned*. Bila gagal, tidak ada yang berubah (seluruh isi file berjalan
    dalam satu transaksi) — baca pesan galatnya.
 
@@ -319,10 +325,10 @@ belanjaku-pip/
 │   ├── mak.ts              # tipe & penyusun data MAK / Kertas Kerja POK
 │   ├── faDetail.ts         # pembaca file FA Detail (.xlsx) SAKTI di browser + validasi
 │   ├── pengadaan.ts        # tahap, jumlah & PPN, terbilang, tanggal dalam huruf, pola nomor dokumen pengadaan
+│   ├── gambarDokumen.ts    # kop surat & logo kaki halaman dokumen pengadaan (KAN, SGS) sebagai data URI
 │   ├── data.ts             # konstanta & DATA CONTOH dashboard
 │   ├── types.ts            # tipe data
 │   └── format.ts           # format rupiah & tanggal Indonesia
-├── public/dokumen/         # kop surat & logo kaki halaman dokumen pengadaan (KAN, SGS)
 ├── supabase/
 │   ├── migrations/         # skema database (tabel, RLS, RPC, storage, realtime)
 │   ├── seed/               # data awal referensi & Kertas Kerja POK
@@ -346,6 +352,6 @@ belanjaku-pip/
 | *"Peran … hanya boleh satu akun aktif"* | Operator Pencairan / Operator Pengesahan sudah dipegang akun lain. Nonaktifkan atau ubah peran akun itu dulu. |
 | Tombol **Terbitkan / Catat** di Pengadaan tidak muncul | Tahap paket bukan giliran peran Anda, atau paket milik PPK / Pejabat Pengadaan lain. Nota Dinas & Kwitansi: PPK paket itu; Surat Pesanan & Nota Pembelian: Pejabat Pengadaan (Administrator boleh semua). |
 | *"Nota dinas … tidak bisa diubah karena Surat Pesanan sudah terbit"* | Minta Pejabat Pengadaan **membatalkan** Surat Pesanan (isiannya tetap tersimpan), perbaiki Nota Dinas, lalu SP diterbitkan ulang. |
-| Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default**, matikan **Header dan footer**. |
+| Hasil cetak dokumen mengecil, terpotong, atau ada tanggal/alamat web di tepi kertas | Di jendela cetak: kertas **A4**, skala **100% / Default**, margin **Default** (bukan *Minimum*/*Kustom*). Chrome & Edge tidak mencetak tanggal/URL bila margin Default; di Safari / Firefox matikan **Header dan footer**. |
 | NIP / SK tercetak titik-titik | Data penanda tangan belum diisi: modul Pengguna (Administrator) atau tombol **Data penanda tangan** di Pengadaan. |
-| Kop surat / logo tidak tampil | Pastikan folder `public/dokumen/` (kop-pip.png, kan.png, sgs-9001.png, sgs-21001.png) ikut ter-push ke GitHub. |
+| Kop surat / logo tidak tampil atau tampil sebagai ikon rusak | Sejak v23 gambar tertanam di `lib/gambarDokumen.ts`. Pastikan file itu ikut ter-push dan deploy Vercel terbaru sudah selesai, lalu muat ulang halaman (⌘⇧R). |
