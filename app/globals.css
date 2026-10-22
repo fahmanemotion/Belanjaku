@@ -1516,11 +1516,8 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
 .grid-excel td.g-redup { color: var(--muted); }
 .grid-excel td.g-centang { font-weight: 700; }
 .grid-excel td.g-mati { background: color-mix(in srgb, var(--sub) 45%, var(--panel)); }
-/* baris spesifikasi "- …" di bawah uraian */
+/* baris spesifikasi paket lama di bawah uraiannya (tabel nota & lampiran) */
 .grid-excel tr.g-spek td { height: 30px; }
-.grid-excel .g-spek-isi { display: flex; align-items: center; padding-left: 12px; }
-.grid-excel .g-poin { flex: none; color: var(--muted); font-weight: 700; }
-.form .grid-excel .g-spek-isi input:not([type="checkbox"]) { flex: 1; height: 29px; padding-left: 6px; font-size: 13px; }
 .grid-excel td.g-teks-spek { padding: 5px 8px 5px 14px; color: var(--muted); font-size: 12.5px; }
 /* sel wajib yang belum benar (setelah simpan gagal) dan harga di atas HPS */
 .grid-excel td.g-salah { background: var(--bad-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 55%, transparent); }
@@ -1570,7 +1567,6 @@ button.doc-chip:hover { background: color-mix(in srgb, var(--accent) 10%, var(--
   .grid-excel col.k-aksi { width: 58px; }
   .grid-excel col.k-periksa { width: 82px; }
   .form .grid-excel input:not([type="checkbox"]) { font-size: 16px; }
-  .form .grid-excel .g-spek-isi input:not([type="checkbox"]) { font-size: 16px; }
   .grid-excel thead th { padding: 4px 6px; white-space: normal; line-height: 1.2; }
 }
 

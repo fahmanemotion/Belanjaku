@@ -618,7 +618,9 @@ function DetailPaket({
                 <td>
                   <b>{x.uraian}</b>
                   {x.spesifikasi.map((s, j) => (
-                    <small key={j} className="spek">- {s}</small>
+                    <small key={j} className="spek">
+                      {s}
+                    </small>
                   ))}
                   {x.ket && <small className="spek">Ket: {x.ket}</small>}
                 </td>
@@ -699,8 +701,9 @@ function FormNotaDinas({
   const daftarPpk = pengguna.filter((u) => u.peran === "PPK" && u.aktif && !u.dihapus);
   const [ppkId, setPpkId] = useState(awal?.ppkId ?? (daftarPpk.length === 1 ? daftarPpk[0].id : ""));
   // Tabel HPS bergaya Excel: paket baru dimulai dengan 3 baris kosong, ubah paket = barang yang ada + 1 baris kosong
+  // (spesifikasi paket lama menjadi baris uraian tersendiri di bawah barangnya)
   const [barang, setBarang] = useState<BarisBarang[]>(() =>
-    awal ? [...awal.item.map(barisDariItem), barisKosong()] : [barisKosong(), barisKosong(), barisKosong()],
+    awal ? [...awal.item.flatMap(barisDariItem), barisKosong()] : [barisKosong(), barisKosong(), barisKosong()],
   );
   /** bertambah tiap kali simpan gagal karena isian tabel → sel yang salah ditandai merah */
   const [coba, setCoba] = useState(0);

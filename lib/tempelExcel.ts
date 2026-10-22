@@ -7,7 +7,8 @@
  *  - menebak arti kolom dari isinya bila salinan tanpa judul (jumlah × harga = total, satuan umum, teks terpanjang = uraian);
  *  - melewati judul dokumen, baris kelompok/kode akun, subtotal, JUMLAH/PPN/TOTAL/TERBILANG, dan judul kolom yang berulang;
  *  - menjadikan baris "- …" (atau baris tanpa angka tepat di bawah barang) spesifikasi barang di atasnya, termasuk
- *    isi kolom Spesifikasi dan sel berbaris banyak;
+ *    isi kolom Spesifikasi dan sel berbaris banyak — atau, untuk tabel tanpa baris spesifikasi (opsi `tanpaSpek` dan
+ *    `gabungSpek`), menjadikan baris seperti itu barang tersendiri dan menggabungkan spesifikasi sebaris ke uraiannya;
  *  - membaca angka gaya Indonesia maupun Inggris ("Rp1.500.000,-", "1,500,000.00"), volume bersatuan ("10 pcs",
  *    "5 org x 2 hr"), dan menghitung harga satuan dari total ÷ jumlah bila kolom harga satuan tidak ada.
  * Murni (tanpa React) agar mudah diuji.
@@ -525,8 +526,17 @@ export interface Golongan {
   adaPpn: boolean;
 }
 
-/** Golongkan tiap baris: barang, spesifikasi (milik barang di atasnya), atau dilewati. `paksa` = pilihan pengguna per baris. */
-export function golongkan(data: string[][], t: Pick<Tafsir, "peran" | "awalJudul" | "akhirJudul">, paksa: Record<number, JenisBaris> = {}): Golongan {
+/**
+ * Golongkan tiap baris: barang, spesifikasi (milik barang di atasnya), atau dilewati. `paksa` = pilihan pengguna per baris.
+ * `opsi.tanpaSpek`: tabel tujuan tanpa baris spesifikasi — baris yang biasanya menjadi spesifikasi ("- …", baris tanpa angka
+ * tepat di bawah barang) menjadi barang tersendiri.
+ */
+export function golongkan(
+  data: string[][],
+  t: Pick<Tafsir, "peran" | "awalJudul" | "akhirJudul">,
+  paksa: Record<number, JenisBaris> = {},
+  opsi: { tanpaSpek?: boolean } = {},
+): Golongan {
   const kolom = (p: Peran) => t.peran.flatMap((x, k) => (x === p ? [k] : []));
   const K = { no: kolom("no"), uraian: kolom("uraian"), spek: kolom("spek"), jumlah: kolom("jumlah"), satuan: kolom("satuan"), harga: kolom("harga"), total: kolom("total") };
   const adaKolomAngka = K.jumlah.length + K.satuan.length + K.harga.length > 0;
@@ -589,6 +599,7 @@ export function golongkan(data: string[][], t: Pick<Tafsir, "peran" | "awalJudul
     alasan.push(j === "lewati" ? a || "dipilih untuk dilewati" : "");
     if (!kosong) sebelum = j;
   });
+  if (opsi.tanpaSpek) jenis.forEach((j, i) => j === "spek" && (jenis[i] = "barang"));
   return { jenis, alasan, adaPpn };
 }
 
@@ -621,7 +632,12 @@ export interface Susunan {
 const formatAngka = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
 const formatRp = (n: number) => "Rp" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-export function susunBarang(data: string[][], peran: Peran[], jenis: JenisBaris[]): Susunan {
+/**
+ * Susun barang dari baris-baris salinan. `opsi.gabungSpek`: tabel tujuan tanpa baris spesifikasi — spesifikasi sebaris
+ * (kolom Spesifikasi, baris kedua dst. sel uraian berbaris banyak) digabung ke uraian dengan ", ", dan baris spesifikasi
+ * menjadi barang tersendiri.
+ */
+export function susunBarang(data: string[][], peran: Peran[], jenis: JenisBaris[], opsi: { gabungSpek?: boolean } = {}): Susunan {
   const kolom = (p: Peran) => peran.flatMap((x, k) => (x === p ? [k] : []));
   const K = { uraian: kolom("uraian"), spek: kolom("spek"), jumlah: kolom("jumlah"), satuan: kolom("satuan"), harga: kolom("harga"), total: kolom("total"), ket: kolom("ket") };
   const nilai = (r: string[], ks: number[]) => ks.map((k) => (r[k] ?? "").trim()).filter(Boolean);
@@ -671,13 +687,20 @@ export function susunBarang(data: string[][], peran: Peran[], jenis: JenisBaris[
       barang.push(b);
     } else if (jenis[i] === "spek") {
       const teks = [...barisTeks(nilai(r, K.uraian).join("\n")), ...barisTeks(nilai(r, K.spek).join("\n"))].map(tanpaPoin).filter(Boolean);
-      (barang.length ? barang[barang.length - 1].spek : spekAwal).push(...teks);
+      if (opsi.gabungSpek) {
+        if (teks.length) barang.push({ baris: i, uraian: teks.join(", "), spek: [], jumlah: "", satuan: "", harga: "", ket: "", catatan: [] });
+      } else (barang.length ? barang[barang.length - 1].spek : spekAwal).push(...teks);
     }
   });
+  if (opsi.gabungSpek)
+    barang.forEach((b) => {
+      if (b.spek.length) b.uraian = [b.uraian, ...b.spek].filter(Boolean).join(", ");
+      b.spek = [];
+    });
 
   const cakup: Cakupan = {
-    uraian: K.uraian.length > 0,
-    spek: K.spek.length > 0 || spekAwal.length > 0 || barang.some((b) => b.spek.length > 0),
+    uraian: K.uraian.length > 0 || (!!opsi.gabungSpek && K.spek.length > 0),
+    spek: !opsi.gabungSpek && (K.spek.length > 0 || spekAwal.length > 0 || barang.some((b) => b.spek.length > 0)),
     jumlah: K.jumlah.length > 0,
     satuan: K.satuan.length > 0 || barang.some((b) => b.satuan),
     harga: K.harga.length > 0 || (K.total.length > 0 && K.jumlah.length > 0),

@@ -4,8 +4,9 @@
  * Bagian antarmuka "tempel dari Excel" untuk tabel barang/jasa:
  *  - BilahTempel  : ringkasan hasil tempel di atas tabel (kolom yang dikenali, baris yang dilewati, catatan)
  *                   dengan tombol Atur kolom & baris… dan Urungkan — mirip tombol "Opsi Tempel" di Excel.
- *  - DialogTempel : pratinjau salinan; arti tiap kolom dan jenis tiap baris (barang / spesifikasi / lewati) bisa diubah,
- *                   lalu pilih ditambahkan di bawah, menimpa mulai baris tertentu, atau mengganti semua barang.
+ *  - DialogTempel : pratinjau salinan; arti tiap kolom dan jenis tiap baris (barang / lewati) bisa diubah, lalu pilih
+ *                   ditambahkan di bawah, menimpa mulai baris tertentu, atau mengganti semua barang. Tabel HPS tanpa baris
+ *                   spesifikasi: baris "- …" menjadi baris uraian tersendiri, kolom Spesifikasi digabung ke uraian.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
@@ -27,10 +28,13 @@ export type ModeTempel = "timpa" | "tambah" | "ganti";
 /** A, B, …, Z, AA, AB … */
 export const hurufKolom = (k: number): string => (k < 26 ? String.fromCharCode(65 + k) : hurufKolom(Math.floor(k / 26) - 1) + hurufKolom(k % 26));
 
+/** nama arti kolom; tabel HPS tanpa baris spesifikasi → isi kolom Spesifikasi digabung ke uraian */
+const namaPeran = (p: Peran) => (p === "spek" ? "Spesifikasi (digabung ke uraian)" : NAMA_PERAN[p]);
+
 /** "Nama Barang → Uraian · Vol → Jumlah / volume · …" */
 export function uraianKolom(t: Pick<Tafsir, "peran" | "judul">): string {
   return t.peran
-    .flatMap((p, k) => (p === "lewati" || p === "no" ? [] : [`${t.judul[k] ? t.judul[k] : `kolom ${hurufKolom(k)}`} → ${NAMA_PERAN[p]}`]))
+    .flatMap((p, k) => (p === "lewati" || p === "no" ? [] : [`${t.judul[k] ? t.judul[k] : `kolom ${hurufKolom(k)}`} → ${namaPeran(p)}`]))
     .join(" · ");
 }
 
@@ -101,7 +105,7 @@ export function BilahTempel({ isi, onAtur, onUrungkan, onTutup }: { isi: IsiBila
             Urungkan
           </button>
         )}
-        <button type="button" className="g-ib" aria-label="Tutup ringkasan tempel" title="Tutup" onClick={onTutup}>
+        <button type="button" className="g-ib" aria-label={isi.jenis === "hasil" ? "Tutup ringkasan tempel" : "Tutup pesan"} title="Tutup" onClick={onTutup}>
           <Icon name="close" size={14} />
         </button>
       </div>
@@ -113,7 +117,7 @@ export function BilahTempel({ isi, onAtur, onUrungkan, onTutup }: { isi: IsiBila
    Dialog atur kolom & baris
    ===================================================================== */
 const PERAN_TUNGGAL: Peran[] = ["uraian", "spek", "harga", "total", "no"];
-const NAMA_JENIS: Record<JenisBaris, string> = { barang: "Barang", spek: "Spesifikasi", lewati: "Lewati" };
+const NAMA_JENIS: Record<JenisBaris, string> = { barang: "Barang", spek: "Barang", lewati: "Lewati" };
 const MAKS_PRATINJAU = 300;
 
 export function DialogTempel({
@@ -145,8 +149,9 @@ export function DialogTempel({
   const [mode, setMode] = useState<ModeTempel>(adaIsi ? modeAwal : "ganti");
   const tombol = useRef<HTMLButtonElement>(null);
   const t: Tafsir = useMemo(() => ({ ...tafsir, peran }), [tafsir, peran]);
-  const gol = useMemo(() => golongkan(data, t, paksa), [data, t, paksa]);
-  const sus = useMemo(() => susunBarang(data, peran, gol.jenis), [data, peran, gol]);
+  // tabel HPS tanpa baris spesifikasi: tiap baris barang menjadi satu baris uraian
+  const gol = useMemo(() => golongkan(data, t, paksa, { tanpaSpek: true }), [data, t, paksa]);
+  const sus = useMemo(() => susunBarang(data, peran, gol.jenis, { gabungSpek: true }), [data, peran, gol]);
 
   useEffect(() => {
     tombol.current?.focus();
@@ -163,7 +168,6 @@ export function DialogTempel({
   const gantiJenis = (i: number, j: JenisBaris) => setPaksa((x) => ({ ...x, [i]: j }));
 
   const nBarang = sus.barang.length;
-  const nSpek = sus.barang.reduce((s, b) => s + b.spek.length, 0);
   const nLewat = gol.jenis.filter((j, i) => j === "lewati" && data[i].some((c) => c.trim())).length;
   const belumLengkap = sus.barang.filter((b) => b.uraian.trim().length < 2 || !b.jumlah || !b.satuan || !b.harga).length;
   const total = sus.barang.reduce((s, b) => s + (Number(b.jumlah) || 0) * (Number(b.harga) || 0), 0);
@@ -191,14 +195,11 @@ export function DialogTempel({
         </div>
         <p>
           Periksa arti tiap kolom (baris paling atas) dan jenis tiap baris. Baris judul, kelompok, subtotal, PPN, total, dan terbilang sudah
-          dilewati otomatis; baris yang diawali &ldquo;-&rdquo; menjadi spesifikasi barang di atasnya.
+          dilewati otomatis; setiap baris lain menjadi satu baris uraian (tanda &ldquo;-&rdquo; di depannya dibuang).
         </p>
         <div className="tempel-ringkas">
           <span>
             <b>{nBarang}</b> barang/jasa
-          </span>
-          <span>
-            <b>{nSpek}</b> spesifikasi
           </span>
           <span>
             <b>{nLewat}</b> baris dilewati
@@ -223,7 +224,7 @@ export function DialogTempel({
                     <select value={peran[k]} onChange={(e) => gantiPeran(k, e.target.value as Peran)} aria-label={`Arti kolom ${hurufKolom(k)}`}>
                       {DAFTAR_PERAN.map((p) => (
                         <option key={p} value={p}>
-                          {NAMA_PERAN[p]}
+                          {namaPeran(p)}
                         </option>
                       ))}
                     </select>
@@ -243,7 +244,7 @@ export function DialogTempel({
                   <tr key={i} className={`tt-${j}`}>
                     <td className="tt-jenis">
                       <select value={j} onChange={(e) => gantiJenis(i, e.target.value as JenisBaris)} aria-label={`Jenis baris ${i + 1}`}>
-                        {(["barang", "spek", "lewati"] as JenisBaris[]).map((x) => (
+                        {(["barang", "lewati"] as JenisBaris[]).map((x) => (
                           <option key={x} value={x}>
                             {NAMA_JENIS[x]}
                           </option>

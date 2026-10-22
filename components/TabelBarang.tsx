@@ -3,11 +3,13 @@
 /**
  * Tabel barang/jasa bergaya Excel untuk form dokumen pengadaan (Nota Dinas & HPS s.d. Kwitansi, BAP & BAST).
  *
- *  - TabelHps      : isian daftar barang/jasa di form Nota Dinas & HPS, susunannya sama dengan sheet HPS:
- *                    No · Uraian · Jumlah · Satuan · Harga Satuan · Total Jumlah · Ket; spesifikasi "- …" ditulis di kolom
- *                    Uraian pada baris di bawah barangnya (sel lain baris itu kosong), lalu JUMLAH · PPN 11% · TOTAL JUMLAH · TERBILANG.
+ *  - TabelHps      : isian daftar barang/jasa di form Nota Dinas & HPS: No · Uraian · Jumlah · Satuan · Harga Satuan ·
+ *                    Total Jumlah · Ket, lalu JUMLAH · PPN 11% · TOTAL JUMLAH · TERBILANG. Satu baris = satu barang/jasa;
+ *                    tidak ada baris spesifikasi terpisah — keterangan barang ditulis di teks Uraian (mis. "Solar non subsidi").
  *  - TabelBeli     : harga satuan pembelian per barang di form Nota Pembelian.
  *  - TabelLampiran : tampilan tanpa isian di form Surat Pesanan dan Kwitansi, BAP & BAST.
+ *  Spesifikasi paket lama (sebelum v29) masih tampil sebagai baris di bawah barangnya pada tabel nota & lampiran;
+ *  saat Nota Dinas-nya diubah, tiap spesifikasi menjadi baris uraian tersendiri.
  *
  * Seperti Excel:
  *  - Blok sel: seret mouse, Shift+klik, Shift+panah, klik nomor baris (baris penuh), klik judul kolom (kolom penuh),
@@ -15,13 +17,13 @@
  *    Ctrl/⌘+X memotong, Delete mengosongkan, Ctrl/⌘+V menempel mulai sel kiri-atas blok — satu nilai mengisi semua sel blok,
  *    satu baris diulang ke tiap baris blok, blok semua sel = daftar diganti. Sesudah tempel, sel hasilnya terblok.
  *  - Klik sekali memilih sel (ketikan mengganti isinya), klik dua kali / F2 menyunting isi sel.
- *  - Tab/Shift+Tab pindah kolom, Enter turun ke baris berikutnya (di baris terakhir menambah baris baru), panah pindah sel,
- *    Esc keluar dari sel, Ctrl/⌘+Z urungkan, Ctrl/⌘+Shift+Z atau Ctrl+Y ulangi.
- *  - Spesifikasi: ketik "- " di awal Uraian baris kosong di bawah barang (atau Alt/⌥+Enter / tombol +); Backspace di awal
- *    teks spesifikasi menjadikannya barang lagi.
+ *  - Tab/Shift+Tab pindah kolom, Enter turun ke baris berikutnya (di baris terakhir menambah baris baru), Shift+Enter naik,
+ *    Alt/⌥+Enter atau tombol + menyisipkan baris di bawah, panah pindah sel, Esc keluar dari sel, Ctrl/⌘+Z urungkan,
+ *    Ctrl/⌘+Shift+Z atau Ctrl+Y ulangi.
  *  - Salinan draft dengan susunan kolom lain dikenali dari judul kolomnya atau ditebak dari isinya (lib/tempelExcel.ts);
+ *    baris "- …" dan baris tanpa angka ditempel sebagai baris uraian tersendiri, kolom Spesifikasi digabung ke Uraian;
  *    hasilnya bisa diatur ulang lewat "Atur kolom & baris…" atau diurungkan.
- * Batas sama dengan database (app.rapikan_item_paket): 50 barang/jasa, 20 baris spesifikasi per barang.
+ * Batas sama dengan database (app.rapikan_item_paket): 50 barang/jasa.
  */
 import {
   useEffect,
@@ -50,7 +52,6 @@ import {
   peranJudul,
   susunBarang,
   tafsirTabel,
-  tanpaPoin,
   tsvBarang,
   type Golongan,
   type JenisBaris,
@@ -61,7 +62,6 @@ import {
 import type { ItemPaket } from "@/lib/types";
 
 export const MAKS_BARANG = 50;
-export const MAKS_SPEK = 20;
 const MAKS_JUMLAH = 100_000;
 const MAKS_HARGA = 10_000_000_000;
 const SATUAN = ["pcs", "buah", "unit", "paket", "set", "rim", "lusin", "box", "dus", "kg", "liter", "lembar", "eksemplar", "orang", "kegiatan", "bulan"];
@@ -72,8 +72,6 @@ const SATUAN = ["pcs", "buah", "unit", "paket", "set", "rim", "lusin", "box", "d
 export interface BarisBarang {
   kunci: number;
   uraian: string;
-  /** satu baris spesifikasi per elemen */
-  spek: string[];
   /** digit */
   jumlah: string;
   satuan: string;
@@ -89,27 +87,19 @@ const INDEKS_KOLOM: Record<KolomBarang, number> = { uraian: 1, jumlah: 2, satuan
 const KOLOM_DI: (KolomBarang | null)[] = [null, "uraian", "jumlah", "satuan", "harga", null, "ket"];
 
 let kunciBaris = 0;
-export const barisKosong = (): BarisBarang => ({ kunci: ++kunciBaris, uraian: "", spek: [], jumlah: "", satuan: "", harga: "", ket: "" });
-export const barisDariItem = (x: ItemPaket): BarisBarang => ({
-  kunci: ++kunciBaris,
-  uraian: x.uraian,
-  spek: [...x.spesifikasi],
-  jumlah: String(x.jumlah),
-  satuan: x.satuan,
-  harga: String(x.hargaHps),
-  ket: x.ket,
-});
+export const barisKosong = (): BarisBarang => ({ kunci: ++kunciBaris, uraian: "", jumlah: "", satuan: "", harga: "", ket: "" });
+/**
+ * Barang dari database → baris tabel. Spesifikasi paket lama (baris "- …" di bawah uraian) menjadi baris uraian
+ * tersendiri di bawahnya — jumlah, satuan, dan harga satuannya bisa diisi (atau barisnya dihapus).
+ */
+export const barisDariItem = (x: ItemPaket): BarisBarang[] => [
+  { kunci: ++kunciBaris, uraian: x.uraian, jumlah: String(x.jumlah), satuan: x.satuan, harga: String(x.hargaHps), ket: x.ket },
+  ...x.spesifikasi.map((s) => ({ ...barisKosong(), uraian: s })),
+];
 /** Baris yang sama sekali kosong tidak ikut disimpan */
-export const barisTerisi = (b: BarisBarang) =>
-  Boolean(b.uraian.trim() || b.spek.some((s) => s.trim()) || b.jumlah || b.satuan.trim() || b.harga || b.ket.trim());
+export const barisTerisi = (b: BarisBarang) => Boolean(b.uraian.trim() || b.jumlah || b.satuan.trim() || b.harga || b.ket.trim());
 const samaBaris = (x: BarisBarang, y: BarisBarang) =>
-  x.uraian === y.uraian &&
-  x.jumlah === y.jumlah &&
-  x.satuan === y.satuan &&
-  x.harga === y.harga &&
-  x.ket === y.ket &&
-  x.spek.length === y.spek.length &&
-  x.spek.every((s, j) => s === y.spek[j]);
+  x.uraian === y.uraian && x.jumlah === y.jumlah && x.satuan === y.satuan && x.harga === y.harga && x.ket === y.ket;
 
 /** Kolom wajib yang belum benar (aturan sama dengan database) */
 export function salahBarang(b: BarisBarang): KolomBarang[] {
@@ -133,11 +123,11 @@ export const pesanSalah = (b: BarisBarang) =>
     })
     .join(", ");
 
-/** Baris tabel → item untuk database (baris kosong dibuang) */
+/** Baris tabel → item untuk database (baris kosong dibuang; tanpa baris spesifikasi) */
 export const itemDariBaris = (xs: BarisBarang[]) =>
   xs.filter(barisTerisi).map((b) => ({
     uraian: b.uraian.trim(),
-    spesifikasi: b.spek.map(tanpaPoin).filter(Boolean),
+    spesifikasi: [] as string[],
     jumlah: Number(b.jumlah),
     satuan: b.satuan.trim(),
     hargaHps: Number(b.harga),
@@ -148,7 +138,7 @@ export const itemDariBaris = (xs: BarisBarang[]) =>
    Bantuan bersama
    ===================================================================== */
 type Baris = { jenis: "barang"; i: number } | { jenis: "spek"; i: number; j: number };
-/** Baris tampilan: tiap barang diikuti baris-baris spesifikasinya */
+/** Baris tampilan tabel nota & lampiran: tiap barang diikuti baris-baris spesifikasinya (paket lama) */
 const susunBaris = (nSpek: number[]): Baris[] =>
   nSpek.flatMap((n, i): Baris[] => [{ jenis: "barang", i }, ...Array.from({ length: n }, (_, j): Baris => ({ jenis: "spek", i, j }))]);
 /** Nomor baris tampilan barang ke-i (atau spesifikasi ke-j-nya) */
@@ -160,27 +150,22 @@ const tombolUrung = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey 
 const tombolUlang = (e: KeyboardEvent) =>
   (e.ctrlKey || e.metaKey) && !e.altKey && ((e.key.toLowerCase() === "z" && e.shiftKey) || (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "y"));
 const tombolSemua = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "a";
-/** tanda poin + spasi di awal teks ("- ", "• ", "* ", "– ") — penanda spesifikasi seperti di sheet HPS */
-const POIN_KETIK = /^\s*[-–—•*·▪►]\s/;
-/** baris barang yang belum berisi apa pun selain uraiannya (belum berjumlah, bersatuan, berharga, berketerangan, berspesifikasi) */
-const barisPolos = (b: BarisBarang) => !b.jumlah && !b.satuan.trim() && !b.harga && !b.ket.trim() && b.spek.length === 0;
+/** tanda poin + spasi di awal teks salinan ("- ", "• ", "* ") dibuang — uraian tanpa garis datar */
+const tanpaTanda = (s: string) => s.replace(/^\s*[-–—•*·▪►]\s+/, "").trim();
 /** angka dari teks salinan sebagai digit ("" bila bukan angka positif) */
 const digitDari = (teks: string) => {
   const n = angkaDari(teks);
   return n !== null && n > 0 ? String(Math.round(n)) : "";
 };
 
-/** sesudah fokus: seluruh isi terpilih (true), kursor di akhir (false), atau kursor di awal teks ("awal") */
-type PilihFokus = boolean | "awal";
 function useFokusSel(ref: RefObject<HTMLTableElement | null>) {
-  const tunda = useRef<{ r: number; c: string; pilih: PilihFokus } | null>(null);
-  const fokus = (r: number, c: string, pilih: PilihFokus = true) => {
+  const tunda = useRef<{ r: number; c: string; pilih: boolean } | null>(null);
+  const fokus = (r: number, c: string, pilih = true) => {
     const el = ref.current?.querySelector<HTMLInputElement>(`input[data-r="${r}"][data-c="${c}"]`);
     if (!el) return false;
     el.focus();
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
-    if (pilih === true) el.select();
-    else if (pilih === "awal") el.setSelectionRange(0, 0);
+    if (pilih) el.select();
     else el.setSelectionRange(el.value.length, el.value.length);
     return true;
   };
@@ -191,7 +176,7 @@ function useFokusSel(ref: RefObject<HTMLTableElement | null>) {
     tunda.current = null;
     fokus(t.r, t.c, t.pilih);
   });
-  const nanti = (r: number, c: string, pilih: PilihFokus = false) => {
+  const nanti = (r: number, c: string, pilih = false) => {
     tunda.current = { r, c, pilih };
   };
   return { fokus, nanti };
@@ -695,22 +680,22 @@ function tafsirSatuKolom(data: string[][], posisi: number): Tafsir {
   };
 }
 
+/** Tabel HPS tanpa baris spesifikasi: baris "- …" / tanpa angka menjadi baris sendiri, spesifikasi sebaris digabung ke uraian */
+const golongkanHps = (data: string[][], t: Tafsir, paksa: Record<number, JenisBaris> = {}) => golongkan(data, t, paksa, { tanpaSpek: true });
+const susunHps = (data: string[][], t: Tafsir, g: Golongan) => susunBarang(data, t.peran, g.jenis, { gabungSpek: true });
+
 interface HasilPasang {
   xs: BarisBarang[];
   masuk: number;
   lewat: number;
   kunci: number[];
-  /** spesifikasi di awal salinan yang tidak punya barang */
-  spekLepas: number;
-  /** spesifikasi di awal salinan yang ditambahkan ke barang ke-i mulai spesifikasi ke-dari (untuk blok hasil tempel) */
-  spekKe: { i: number; dari: number; n: number } | null;
 }
 /**
- * timpa: mulai baris `mulai` (seperti tempel di Excel; isian yang tidak dimuat salinan tetap — uraian yang ditimpa
- * membawa spesifikasinya dari salinan), tambah: sesudah baris terisi terakhir, ganti: seluruh tabel diganti.
+ * timpa: mulai baris `mulai` (seperti tempel di Excel; isian yang tidak dimuat salinan tetap),
+ * tambah: sesudah baris terisi terakhir, ganti: seluruh tabel diganti.
  */
-function pasangTempel(nilai: BarisBarang[], s: Susunan, mode: ModeTempel, mulai: number, fokusBarang: number | null): HasilPasang {
-  let xs = nilai.map((x) => ({ ...x, spek: [...x.spek] }));
+function pasangTempel(nilai: BarisBarang[], s: Susunan, mode: ModeTempel, mulai: number): HasilPasang {
+  let xs = nilai.map((x) => ({ ...x }));
   let awal = mulai;
   if (mode === "ganti") {
     xs = [];
@@ -718,16 +703,6 @@ function pasangTempel(nilai: BarisBarang[], s: Susunan, mode: ModeTempel, mulai:
   } else if (mode === "tambah") {
     awal = xs.length;
     while (awal > 0 && !barisTerisi(xs[awal - 1])) awal--;
-  }
-  let spekLepas = 0;
-  let spekKe: HasilPasang["spekKe"] = null;
-  if (s.spekAwal.length) {
-    const tujuan = !s.barang.length && fokusBarang !== null ? fokusBarang : awal - 1;
-    if (tujuan >= 0 && xs[tujuan]) {
-      const dari = xs[tujuan].spek.length;
-      xs[tujuan].spek = [...xs[tujuan].spek, ...s.spekAwal].slice(0, MAKS_SPEK).map((t) => t.slice(0, 200));
-      if (xs[tujuan].spek.length > dari) spekKe = { i: tujuan, dari, n: xs[tujuan].spek.length - dari };
-    } else spekLepas = s.spekAwal.length;
   }
   const kunci: number[] = [];
   let masuk = 0;
@@ -737,11 +712,7 @@ function pasangTempel(nilai: BarisBarang[], s: Susunan, mode: ModeTempel, mulai:
     if (i >= MAKS_BARANG) return void lewat++;
     while (xs.length <= i) xs.push(barisKosong());
     const x = xs[i];
-    if (s.cakup.uraian) {
-      // kolom Uraian ditimpa: spesifikasinya ikut ditimpa (baris "- …" salinan), seperti sel-sel kolom Uraian di Excel
-      x.uraian = m.uraian.slice(0, 200);
-      x.spek = m.spek.slice(0, MAKS_SPEK).map((t) => t.slice(0, 200));
-    } else if (s.cakup.spek) x.spek = m.spek.slice(0, MAKS_SPEK).map((t) => t.slice(0, 200));
+    if (s.cakup.uraian) x.uraian = m.uraian.slice(0, 200);
     if (s.cakup.jumlah) x.jumlah = m.jumlah;
     if (s.cakup.satuan) x.satuan = m.satuan.slice(0, 30);
     if (s.cakup.harga) x.harga = m.harga;
@@ -751,7 +722,7 @@ function pasangTempel(nilai: BarisBarang[], s: Susunan, mode: ModeTempel, mulai:
   });
   if (mode === "ganti" && xs.length < MAKS_BARANG) xs.push(barisKosong());
   if (!xs.length) xs.push(barisKosong());
-  return { xs, masuk, lewat, kunci, spekLepas, spekKe };
+  return { xs, masuk, lewat, kunci };
 }
 
 const CATATAN: Record<KodeCatatan, (n: number) => string> = {
@@ -766,37 +737,34 @@ const CATATAN: Record<KodeCatatan, (n: number) => string> = {
  * cukup ditandai blok hasil tempel seperti Excel. `selalu` = tetap tampil (dari dialog atau daftar diganti).
  */
 function isiBilahHps(data: string[][], t: Tafsir, g: Golongan, s: Susunan, h: HasilPasang, ppnDicentang: boolean, selalu: boolean, ganti: boolean): IsiBilah | null {
-  const nSpek = s.barang.reduce((n, b) => n + b.spek.length, 0) + (h.spekLepas ? 0 : s.spekAwal.length);
   const alasan = g.jenis.flatMap((j, i) => (j === "lewati" && data[i].some((c) => c.trim()) ? [g.alasan[i]] : []));
   const catatan: string[] = [];
   const hitung = new Map<KodeCatatan, number>();
   s.barang.forEach((b) => new Set(b.catatan.map((c) => c.kode)).forEach((k) => hitung.set(k, (hitung.get(k) ?? 0) + 1)));
   hitung.forEach((n, k) => catatan.push(CATATAN[k](n)));
+  const panjang = s.barang.filter((b) => b.uraian.length > 200).length;
+  if (panjang) catatan.push(`uraian ${panjang} barang dipotong menjadi 200 huruf`);
   if (ppnDicentang) catatan.push("PPN 11% dicentang karena salinan memuat baris PPN");
   if (h.lewat) catatan.push(`${h.lewat} barang tidak masuk (maksimal ${MAKS_BARANG} barang/jasa per paket)`);
-  if (h.spekLepas) catatan.push(`${h.spekLepas} spesifikasi di awal salinan tidak punya barang dan diabaikan`);
   if (!selalu && t.sumber === "posisi" && !alasan.length && !catatan.length) return null;
   const belum = h.xs.filter((x) => h.kunci.includes(x.kunci) && salahBarang(x).length > 0).length;
   if (belum) catatan.unshift(`${belum} barang belum lengkap — lengkapi sel merah`);
   const judul =
     (ganti ? "Daftar diganti: " : "") +
-    (h.masuk ? `${h.masuk} barang/jasa ditempel` : `${nSpek} spesifikasi ditempel`) +
-    (h.masuk && nSpek ? ` · ${nSpek} spesifikasi` : "") +
+    `${h.masuk} barang/jasa ditempel` +
     (alasan.length ? ` · ${alasan.length} baris dilewati (${[...new Set(alasan)].join(", ")})` : "");
   return { jenis: "hasil", judul, kolom: uraianKolom(t), catatan };
 }
 
 /* =====================================================================
-   Tahap 1 — tabel HPS yang bisa diisi
+   Tahap 1 — tabel HPS yang bisa diisi (satu baris = satu barang/jasa)
    ===================================================================== */
 interface AsalTempel {
   mode: ModeTempel;
-  /** baris barang tempat menimpa */
+  /** baris tempat menimpa */
   mulai: number;
   /** kolom aplikasi tempat menempel (URUTAN_TABEL) untuk tempel berurutan; kosong = kenali dari judul/isi */
   posisi?: number;
-  /** barang yang sedang dipilih (untuk salinan berisi spesifikasi saja) */
-  fokusBarang: number | null;
   /** selalu tampilkan dialog atur kolom & baris (tombol Tempel dari Excel) */
   dialog?: boolean;
 }
@@ -830,14 +798,28 @@ export function TabelHps({
   const { fokus, nanti } = useFokusSel(ref);
   /** kolom tempat mulai menekan Tab → Enter kembali ke kolom itu di baris berikutnya (seperti Excel) */
   const tabAwal = useRef<{ r: number; c: KolomBarang } | null>(null);
+  /**
+   * Ubah paket lama: spesifikasinya kini menjadi baris uraian tersendiri yang belum berjumlah/berharga
+   * (barang yang sudah tersimpan selalu lengkap) → langsung ditandai merah & diberi petunjuk.
+   */
+  const [awalBelum] = useState(() => nilai.filter((b) => barisTerisi(b) && salahBarang(b).length > 0).map((b) => b.kunci));
   /** hasil tempel terakhir (bilah ringkasan) & dialog atur kolom/baris */
-  const [bilah, setBilah] = useState<{ isi: IsiBilah; tempel?: TempelAktif } | null>(null);
+  const [bilah, setBilah] = useState<{ isi: IsiBilah; tempel?: TempelAktif } | null>(() =>
+    awalBelum.length
+      ? {
+          isi: {
+            jenis: "info",
+            judul: `${awalBelum.length} baris uraian belum lengkap (dulu spesifikasi barang di atasnya)`,
+            catatan: ["isi jumlah, satuan, dan harga satuannya — bila hanya keterangan barang, tulis di Uraian barangnya (mis. Solar non subsidi) lalu hapus barisnya"],
+          },
+        }
+      : null,
+  );
   const [dialog, setDialog] = useState<TempelAktif | null>(null);
-  /** baris hasil tempel: sel wajibnya yang kosong langsung ditandai merah */
-  const [sorot, setSorot] = useState<Set<number>>(() => new Set());
-  const nSpek = nilai.map((b) => b.spek.length);
-  const baris = susunBaris(nSpek);
-  const blok = useBlok(ref, baris.length, 6);
+  /** baris hasil tempel (dan baris bekas spesifikasi paket lama): sel wajibnya yang kosong langsung ditandai merah */
+  const [sorot, setSorot] = useState<Set<number>>(() => new Set(awalBelum));
+  // satu baris tabel = satu barang/jasa: nomor baris tampilan sama dengan indeks barang
+  const blok = useBlok(ref, nilai.length, 6);
   const riwayat = useRiwayat({ nilai, ppn }, (v) => {
     if (v.ppn !== ppn) onPpn(v.ppn);
     onChange(v.nilai);
@@ -860,7 +842,7 @@ export function TabelHps({
   useEffect(() => {
     if (coba <= 0) return;
     const i = nilai.findIndex((b) => barisTerisi(b) && salahBarang(b).length > 0);
-    if (i >= 0) fokus(indeksBaris(nSpek, i), salahBarang(nilai[i])[0]);
+    if (i >= 0) fokus(i, salahBarang(nilai[i])[0]);
     else if (!nilai.some(barisTerisi)) fokus(0, "uraian");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coba]);
@@ -874,7 +856,7 @@ export function TabelHps({
     if (bilah) setBilah(null);
     blok.hapusSalinan();
     if (sel) blok.kumpul(sel);
-    else if (/^(baris|spek)[+-]$/.test(aksi)) blok.tetapkan(null);
+    else if (/^baris[+-]$/.test(aksi)) blok.tetapkan(null);
     else blok.segarkan();
     onChange(xs);
   };
@@ -882,82 +864,25 @@ export function TabelHps({
     riwayat.catat("ppn");
     onPpn(v);
   };
-  const jumlahSpek = (xs: BarisBarang[]) => xs.map((x) => x.spek.length);
-  const ubah = (i: number, kolom: KolomBarang, v: string) => {
-    // Spesifikasi ditulis di kolom Uraian seperti sheet HPS: "- …" di Uraian baris kosong tepat di bawah barang (atau
-    // spesifikasinya) menjadikan baris itu spesifikasi barang tersebut
-    if (kolom === "uraian" && i > 0 && nilai[i - 1].uraian.trim() && POIN_KETIK.test(v) && barisPolos(nilai[i]))
-      return jadikanSpek(i, v.replace(POIN_KETIK, "").trimStart());
+  const ubah = (i: number, kolom: KolomBarang, v: string) =>
     ganti(
       nilai.map((x, k) => (k === i ? { ...x, [kolom]: v } : x)),
       `ketik:${nilai[i].kunci}:${kolom}`,
-      { r: indeksBaris(nSpek, i), c: INDEKS_KOLOM[kolom] },
+      { r: i, c: INDEKS_KOLOM[kolom] },
     );
-  };
-  /** baris barang ke-i (masih kosong selain uraiannya) → spesifikasi terakhir barang di atasnya; letak barisnya tetap */
-  const jadikanSpek = (i: number, teks: string) => {
-    const atas = nilai[i - 1];
-    if (atas.spek.length >= MAKS_SPEK) {
-      onInfo?.(`Maksimal ${MAKS_SPEK} baris spesifikasi per barang/jasa`);
-      return ganti(
-        nilai.map((x, k) => (k === i ? { ...x, uraian: teks } : x)),
-        `ketik:${nilai[i].kunci}:uraian`,
-        { r: indeksBaris(nSpek, i), c: 1 },
-      );
-    }
-    const xs = nilai.filter((_, k) => k !== i).map((y, k) => (k === i - 1 ? { ...y, spek: [...y.spek, teks.slice(0, 200)] } : y));
-    nanti(indeksBaris(nSpek, i), "uraian");
-    ganti(xs, "spek+");
-  };
-  /** Backspace di awal teks spesifikasi: spesifikasi ke-j menjadi barang baru (spesifikasi sesudahnya ikut pindah ke barang itu) */
-  const jadikanBarang = (i: number, j: number) => {
-    if (nilai.length >= MAKS_BARANG) return onInfo?.(`Maksimal ${MAKS_BARANG} barang/jasa dalam satu paket`);
-    const x = nilai[i];
-    const baru: BarisBarang = { ...barisKosong(), uraian: x.spek[j], spek: x.spek.slice(j + 1) };
-    const xs = [...nilai.slice(0, i), { ...x, spek: x.spek.slice(0, j) }, baru, ...nilai.slice(i + 1)];
-    nanti(indeksBaris(nSpek, i, j), "uraian", "awal");
-    ganti(xs, "baris+");
-  };
-  /** tanda "- " yang diketik di awal spesifikasi dibuang karena tanda "-" sudah tampil di depan sel */
-  const ubahSpek = (i: number, j: number, teks: string) => {
-    const bersih = teks.replace(/^\s*[-–—•*·]\s+/, "");
-    ganti(
-      nilai.map((x, k) => (k === i ? { ...x, spek: x.spek.map((s, m) => (m === j ? bersih : s)) } : x)),
-      `ketik:${nilai[i].kunci}:s${j}`,
-      { r: indeksBaris(nSpek, i, j), c: 1 },
-    );
-  };
 
+  /** baris kosong baru sesudah baris ke-`setelah`, lalu kursor ke sana */
   const tambahBaris = (setelah: number, kolom: KolomBarang = "uraian") => {
     if (nilai.length >= MAKS_BARANG) return onInfo?.(`Maksimal ${MAKS_BARANG} barang/jasa dalam satu paket`);
     const xs = [...nilai.slice(0, setelah + 1), barisKosong(), ...nilai.slice(setelah + 1)];
-    nanti(indeksBaris(jumlahSpek(xs), setelah + 1), kolom);
+    nanti(setelah + 1, kolom);
     ganti(xs, "baris+");
   };
   const hapusBaris = (i: number) => {
     const sisa = nilai.filter((_, k) => k !== i);
     const xs = sisa.length ? sisa : [barisKosong()];
-    nanti(indeksBaris(jumlahSpek(xs), Math.min(i, xs.length - 1)), "uraian");
+    nanti(Math.min(i, xs.length - 1), "uraian");
     ganti(xs, "baris-");
-  };
-  /** baris spesifikasi baru di bawah spesifikasi ke-`setelah` (atau di akhir daftar spesifikasinya) */
-  const tambahSpek = (i: number, setelah?: number) => {
-    const x = nilai[i];
-    if (x.spek.length >= MAKS_SPEK) return onInfo?.(`Maksimal ${MAKS_SPEK} baris spesifikasi per barang/jasa`);
-    const j = setelah === undefined ? x.spek.length : setelah + 1;
-    const xs = nilai.map((y, k) => (k === i ? { ...y, spek: [...y.spek.slice(0, j), "", ...y.spek.slice(j)] } : y));
-    nanti(indeksBaris(jumlahSpek(xs), i, j), "uraian");
-    ganti(xs, "spek+");
-  };
-  /** hapus spesifikasi ke-j; fokus pindah ke baris sebelumnya, ke barang berikutnya, atau tetap di posisi yang sama */
-  const hapusSpek = (i: number, j: number, ke: "sebelum" | "berikut" | "tetap") => {
-    const xs = nilai.map((y, k) => (k === i ? { ...y, spek: y.spek.filter((_, m) => m !== j) } : y));
-    if (ke === "berikut" && i + 1 >= xs.length && xs.length < MAKS_BARANG) xs.push(barisKosong());
-    const ns = jumlahSpek(xs);
-    if (ke === "berikut") nanti(indeksBaris(ns, Math.min(i + 1, xs.length - 1)), "uraian");
-    else if (ke === "tetap" && j < xs[i].spek.length) nanti(indeksBaris(ns, i, j), "uraian");
-    else nanti(j > 0 ? indeksBaris(ns, i, j - 1) : indeksBaris(ns, i), "uraian");
-    ganti(xs, "spek-");
   };
 
   /* ---------- Blok sel ---------- */
@@ -965,11 +890,9 @@ export function TabelHps({
     el.tagName === "INPUT" && el.dataset.r !== undefined ? { r: Number(el.dataset.r), c: INDEKS_KOLOM[el.dataset.c as KolomBarang] ?? 1 } : null;
   /** isi sel (r, c) untuk disalin; angka tanpa titik ribuan agar terbaca sebagai angka di Excel */
   const nilaiSel = (r: number, c: number): string => {
-    const b = baris[r];
-    if (!b) return "";
-    const x = nilai[b.i];
-    if (b.jenis === "spek") return c === 1 && x.spek[b.j].trim() ? `- ${x.spek[b.j].trim()}` : "";
-    if (c === 0) return nomor[b.i] ? String(nomor[b.i]) : "";
+    const x = nilai[r];
+    if (!x) return "";
+    if (c === 0) return nomor[r] ? String(nomor[r]) : "";
     if (c === 5) {
       const t = (Number(x.jumlah) || 0) * (Number(x.harga) || 0);
       return t ? String(t) : "";
@@ -984,45 +907,28 @@ export function TabelHps({
     if (!k) return;
     const v = teks.replace(/\s*\n\s*/g, " ").trim();
     if (k === "jumlah" || k === "harga") x[k] = digitDari(v);
-    else if (k === "uraian") x.uraian = tanpaPoin(v).slice(0, 200);
+    else if (k === "uraian") x.uraian = tanpaTanda(v).slice(0, 200);
     else x[k] = v.slice(0, k === "satuan" ? 30 : 100);
   };
-  /** ubah semua sel blok: `isi(x, c)` untuk sel barang, `isiSpek(x, j)` untuk sel spesifikasi; false bila tidak ada yang berubah */
-  const ubahRentang = (g: Rentang, aksi: string, isi: (x: BarisBarang, c: number) => void, isiSpek?: (x: BarisBarang, j: number) => void) => {
-    const xs = nilai.map((x) => ({ ...x, spek: [...x.spek] }));
+  /** ubah semua sel blok; false bila tidak ada yang berubah */
+  const ubahRentang = (g: Rentang, aksi: string, isi: (x: BarisBarang, c: number) => void) => {
+    const xs = nilai.map((x) => ({ ...x }));
     for (let r = g.r1; r <= g.r2; r++) {
-      const b = baris[r];
-      if (!b) continue;
-      if (b.jenis === "spek") {
-        if (isiSpek && g.c1 <= 1 && g.c2 >= 1) isiSpek(xs[b.i], b.j);
-        continue;
-      }
-      for (let c = g.c1; c <= g.c2; c++) isi(xs[b.i], c);
+      const x = xs[r];
+      if (x) for (let c = g.c1; c <= g.c2; c++) isi(x, c);
     }
     if (xs.every((x, i) => samaBaris(x, nilai[i]))) return false;
     ganti(xs, aksi);
     return true;
   };
-  const kosongkanRentang = (g: Rentang) =>
-    ubahRentang(
-      g,
-      "hapus",
-      (x, c) => isiSel(x, c, ""),
-      (x, j) => (x.spek[j] = ""),
-    );
+  const kosongkanRentang = (g: Rentang) => ubahRentang(g, "hapus", (x, c) => isiSel(x, c, ""));
   /** satu nilai salinan → semua sel blok (seperti Excel) */
   const isiRentang = (g: Rentang, teks: string) => {
     if (!adaIsian(g)) return onInfo?.("Kolom No. dan Total Jumlah terisi otomatis");
-    ubahRentang(
-      g,
-      "isi",
-      (x, c) => isiSel(x, c, teks),
-      (x, j) => (x.spek[j] = tanpaPoin(teks.replace(/\s*\n\s*/g, " ")).slice(0, 200)),
-    );
+    ubahRentang(g, "isi", (x, c) => isiSel(x, c, teks));
   };
-  /** satu baris salinan → diulang ke tiap baris barang di blok (lebar blok kelipatan lebar salinan) */
-  const ulangBaris = (g: Rentang, sel: string[]) =>
-    ubahRentang(g, "isi", (x, c) => isiSel(x, c, sel[(c - g.c1) % sel.length] ?? ""));
+  /** satu baris salinan → diulang ke tiap baris blok (lebar blok kelipatan lebar salinan) */
+  const ulangBaris = (g: Rentang, sel: string[]) => ubahRentang(g, "isi", (x, c) => isiSel(x, c, sel[(c - g.c1) % sel.length] ?? ""));
   /** Ctrl/⌘+C / X: blok (atau sel aktif yang belum disunting) → clipboard sebagai sel-sel Excel; false = salin biasa */
   const salinKe = (data: DataTransfer, sasaran: EventTarget | null, potong: boolean) => {
     const { rentang: g, banyak } = blok.terkini();
@@ -1042,8 +948,8 @@ export function TabelHps({
   /** `dariDialog` = hasil "Atur kolom & baris…" → bilah selalu tampil agar pilihannya bisa diatur ulang */
   const pasang = (tp: TempelAktif, g: Golongan, s: Susunan, dariDialog = false) => {
     const dasar = tp.sebelum ?? { nilai, ppn };
-    const h = pasangTempel(dasar.nilai, s, tp.asal.mode, tp.asal.mulai, tp.asal.fokusBarang);
-    if (!h.masuk && !s.spekAwal.length) return onInfo?.("Tidak ada baris barang/jasa yang bisa ditempel");
+    const h = pasangTempel(dasar.nilai, s, tp.asal.mode, tp.asal.mulai);
+    if (!h.masuk) return onInfo?.("Tidak ada baris barang/jasa yang bisa ditempel");
     // tempel ulang dari "Atur kolom & baris…" memakai isi tabel sebelum tempel; riwayatnya sudah tercatat
     if (!tp.sebelum) riwayat.catat("tempel");
     blok.hapusSalinan();
@@ -1054,17 +960,11 @@ export function TabelHps({
     const diganti = tp.asal.mode === "ganti" && dasar.nilai.some(barisTerisi);
     const isi = isiBilahHps(tp.data, tp.tafsir, g, s, h, ppnDicentang, dariDialog || diganti, diganti);
     setBilah(isi ? { isi, tempel: { ...tp, sebelum: dasar } } : null);
-    // sel hasil tempel menjadi blok terpilih, seperti sesudah tempel di Excel
+    // sel hasil tempel menjadi blok terpilih, seperti sesudah tempel di Excel (kolom Spesifikasi masuk ke Uraian)
     const idx = h.kunci.map((k) => h.xs.findIndex((x) => x.kunci === k)).filter((i) => i >= 0);
-    const kolom = tp.tafsir.peran.map((p) => URUTAN_TABEL.indexOf(p)).filter((c) => c > 0);
-    const ns = jumlahSpek(h.xs);
-    if (idx.length && kolom.length) {
-      const akhir = Math.max(...idx);
-      blok.tetapkan({ r: indeksBaris(ns, Math.min(...idx)), c: Math.min(...kolom) }, { r: indeksBaris(ns, akhir) + ns[akhir], c: Math.max(...kolom) }, true);
-    } else if (h.spekKe) {
-      const { i, dari, n } = h.spekKe;
-      blok.tetapkan({ r: indeksBaris(ns, i, dari), c: 1 }, { r: indeksBaris(ns, i, dari + n - 1), c: 1 }, true);
-    } else blok.tetapkan(null);
+    const kolom = tp.tafsir.peran.map((p) => URUTAN_TABEL.indexOf(p === "spek" ? "uraian" : p)).filter((c) => c > 0);
+    if (idx.length && kolom.length) blok.tetapkan({ r: Math.min(...idx), c: Math.min(...kolom) }, { r: Math.max(...idx), c: Math.max(...kolom) }, true);
+    else blok.tetapkan(null);
   };
 
   const prosesTempel = (teks: string, asal: AsalTempel) => {
@@ -1074,15 +974,8 @@ export function TabelHps({
     const tafsir = satuKolom && asal.posisi !== undefined ? tafsirSatuKolom(data, asal.posisi) : tafsirTabel(data, { posisi: asal.posisi });
     const tp: TempelAktif = { data, tafsir, paksa: {}, asal, sebelum: null };
     if (asal.dialog || tafsir.ragu) return setDialog(tp);
-    const g = golongkan(data, tafsir);
-    pasang(tp, g, susunBarang(data, tafsir.peran, g.jenis));
-  };
-
-  /** barang pertama pada atau sesudah baris tampilan r */
-  const barangDari = (r: number) => {
-    const b = baris[r];
-    if (!b) return nilai.length;
-    return b.jenis === "barang" ? b.i : b.i + 1;
+    const g = golongkanHps(data, tafsir);
+    pasang(tp, g, susunHps(data, tafsir, g));
   };
 
   /** salinan beberapa sel → mulai sel kiri-atas blok, seperti Excel; susunan kolom lain dikenali dari judul/isinya */
@@ -1091,32 +984,13 @@ export function TabelHps({
     if (!data.length) return;
     const lebarData = Math.max(...data.map((d) => d.length));
     const lebarBlok = g.c2 - g.c1 + 1;
-    const nBarangBlok = baris.slice(g.r1, g.r2 + 1).filter((b) => b.jenis === "barang").length;
-    const semuaSel = g.r1 === 0 && g.r2 === baris.length - 1 && g.c1 === 0 && g.c2 === 6;
+    const semuaSel = g.r1 === 0 && g.r2 === nilai.length - 1 && g.c1 === 0 && g.c2 === 6;
     // satu baris salinan ke blok beberapa baris yang lebarnya kelipatan salinan → diulang ke tiap baris (seperti Excel)
-    if (data.length === 1 && nBarangBlok > 1 && !semuaSel && lebarBlok % lebarData === 0) return void ulangBaris(g, data[0]);
-    const b = baris[g.r1];
-    if (b?.jenis === "spek" && g.c1 <= 1 && data.every((d) => d.filter((x) => x.trim()).length <= 1)) {
-      // di sel spesifikasi (atau nomor barisnya): salinan satu kolom menimpa spesifikasi mulai baris itu (sisanya ditambahkan)
-      const x = nilai[b.i];
-      const teks = data
-        .flatMap((d) => (d.find((y) => y.trim()) ?? "").split("\n"))
-        .map((t) => tanpaPoin(t).slice(0, 200))
-        .filter(Boolean);
-      if (!teks.length) return;
-      const spek = [...x.spek.slice(0, b.j), ...teks, ...x.spek.slice(b.j + teks.length)].slice(0, MAKS_SPEK);
-      const masuk = Math.min(teks.length, MAKS_SPEK - b.j);
-      ganti(nilai.map((y, k) => (k === b.i ? { ...y, spek } : y)), "tempel");
-      if (masuk < teks.length) onInfo?.(`Maksimal ${MAKS_SPEK} baris spesifikasi per barang/jasa`);
-      blok.tetapkan({ r: g.r1, c: 1 }, { r: g.r1 + masuk - 1, c: 1 }, true);
-      return;
-    }
+    if (data.length === 1 && g.r2 > g.r1 && !semuaSel && lebarBlok % lebarData === 0) return void ulangBaris(g, data[0]);
     // blok mulai di kolom No. (baris penuh / semua sel): salinan tanpa kolom nomor masuk mulai kolom Uraian
     const posisi = g.c1 === 0 && !kolomNomor(data) ? 1 : g.c1;
     if (lebarData === 1 && (posisi === 0 || posisi === 5)) return onInfo?.("Kolom No. dan Total Jumlah terisi otomatis — tempel ke kolom lain");
-    // salinan berisi spesifikasi saja: milik barang yang dipilih, atau barang di atasnya bila baris yang dipilih masih kosong
-    const fokusBarang = !b ? null : b.jenis === "barang" && b.i > 0 && !barisTerisi(nilai[b.i]) ? b.i - 1 : b.i;
-    prosesTempel(mentah, { mode: semuaSel ? "ganti" : "timpa", mulai: barangDari(g.r1), posisi, fokusBarang });
+    prosesTempel(mentah, { mode: semuaSel ? "ganti" : "timpa", mulai: g.r1, posisi });
   };
 
   /**
@@ -1147,7 +1021,7 @@ export function TabelHps({
 
   // Ctrl/⌘+V saat kursor tidak di tabel / isian mana pun (mis. sesudah Esc atau klik tombol) → ditambahkan di bawah barang yang ada
   const tempelLuar = useRef<(teks: string) => void>(() => {});
-  tempelLuar.current = (teks) => prosesTempel(teks, { mode: "tambah", mulai: akhirIsi, fokusBarang: null });
+  tempelLuar.current = (teks) => prosesTempel(teks, { mode: "tambah", mulai: akhirIsi });
   const tempelTabel = useRef<(teks: string) => boolean>(() => false);
   tempelTabel.current = (teks) => tempelKe(teks, null);
   useClipboardTabel(ref, (data, potong) => salinKe(data, null, potong));
@@ -1197,7 +1071,7 @@ export function TabelHps({
             : "Browser belum mengizinkan membaca salinan. Blok baris-baris barang di Excel lalu salin (⌘C / Ctrl+C), klik sel Uraian di tabel, kemudian tekan ⌘V / Ctrl+V.",
         },
       });
-    prosesTempel(teks, { mode: akhirIsi > 0 ? "tambah" : "ganti", mulai: akhirIsi, fokusBarang: null, dialog: true });
+    prosesTempel(teks, { mode: akhirIsi > 0 ? "tambah" : "ganti", mulai: akhirIsi, dialog: true });
   };
 
   const salinExcel = async () => {
@@ -1205,7 +1079,7 @@ export function TabelHps({
     if (!isi.length) return onInfo?.("Tabel masih kosong");
     const ok = await salinTeks(
       tsvBarang(
-        isi.map((b) => ({ uraian: b.uraian.trim(), spek: b.spek.map(tanpaPoin).filter(Boolean), jumlah: Number(b.jumlah) || 0, satuan: b.satuan.trim(), harga: Number(b.harga) || 0, ket: b.ket.trim() })),
+        isi.map((b) => ({ uraian: b.uraian.trim(), spek: [], jumlah: Number(b.jumlah) || 0, satuan: b.satuan.trim(), harga: Number(b.harga) || 0, ket: b.ket.trim() })),
         { ppn },
       ),
     );
@@ -1219,11 +1093,10 @@ export function TabelHps({
     if (!riwayat.ulangi()) onInfo?.("Tidak ada yang bisa diulangi");
   };
 
-  /** pindah sel aktif: sel berisian difokuskan, sel hanya-baca dipilih dengan fokus tetap di tabel */
+  /** pindah sel aktif: sel berisian difokuskan, sel hanya-baca (No., Total Jumlah) dipilih dengan fokus tetap di tabel */
   const pindahSel = (t: Titik) => {
-    const b = baris[t.r];
-    const dataC = b?.jenis === "spek" ? (t.c === 1 ? "uraian" : null) : KOLOM_DI[t.c];
-    if (dataC && fokus(t.r, dataC)) return;
+    const k = KOLOM_DI[t.c];
+    if (k && fokus(t.r, k)) return;
     blok.tetapkan(t);
     blok.tunjukkan(t);
   };
@@ -1269,12 +1142,12 @@ export function TabelHps({
       if (banyak && (ARAH[e.key] || e.key === "Enter" || e.key === "Tab")) blok.kumpul(aktif);
     }
     if (naTabel) {
-      // sel aktif hanya-baca (No., Total Jumlah, sel kosong di baris spesifikasi): panah/Enter/Tab memindah sel aktif
+      // sel aktif hanya-baca (No., Total Jumlah): panah/Enter/Tab memindah sel aktif
       const gerak: [number, number] | undefined =
         ARAH[e.key] && !e.shiftKey ? ARAH[e.key] : e.key === "Enter" ? [e.shiftKey ? -1 : 1, 0] : e.key === "Tab" ? [0, e.shiftKey ? -1 : 1] : undefined;
       if (gerak && !e.altKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        return pindahSel({ r: jepit(aktif.r + gerak[0], 0, baris.length - 1), c: jepit(aktif.c + gerak[1], 0, 6) });
+        return pindahSel({ r: jepit(aktif.r + gerak[0], 0, nilai.length - 1), c: jepit(aktif.c + gerak[1], 0, 6) });
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1286,8 +1159,8 @@ export function TabelHps({
     }
     const r = Number(el.dataset.r);
     const c = el.dataset.c as KolomBarang;
-    const b = baris[r];
-    if (!b) return;
+    const x = nilai[r];
+    if (!x) return;
     const kosong = el.value.length === 0;
     switch (e.key) {
       case "Escape":
@@ -1303,16 +1176,18 @@ export function TabelHps({
         return;
       case "Enter": {
         e.preventDefault(); // jangan mengirim form
-        if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return tambahSpek(b.i, b.jenis === "spek" ? b.j : undefined);
-        if (b.jenis === "spek") {
-          // Enter di baris spesifikasi yang masih kosong mengakhiri daftar spesifikasi
-          if (!nilai[b.i].spek[b.j].trim()) return hapusSpek(b.i, b.j, "berikut");
-          return tambahSpek(b.i, b.j);
+        // Alt/⌥+Enter: sisipkan baris kosong di bawah baris ini
+        if (e.altKey) return tambahBaris(r, "uraian");
+        if (e.ctrlKey || e.metaKey) return;
+        if (e.shiftKey) {
+          tabAwal.current = null;
+          if (r > 0) fokus(r - 1, c);
+          return;
         }
         const kolom = tabAwal.current?.r === r ? tabAwal.current.c : c;
         tabAwal.current = null;
-        if (b.i + 1 < nilai.length) fokus(indeksBaris(nSpek, b.i + 1), kolom);
-        else if (barisTerisi(nilai[b.i])) tambahBaris(b.i, kolom);
+        if (r + 1 < nilai.length) fokus(r + 1, kolom);
+        else if (barisTerisi(x)) tambahBaris(r, kolom);
         return;
       }
       case "Tab":
@@ -1324,13 +1199,8 @@ export function TabelHps({
         if (c === "satuan" && !kosong && !seluruh(el)) return;
         if (e.altKey || e.shiftKey) return;
         e.preventDefault();
-        const arah = e.key === "ArrowDown" ? 1 : -1;
-        for (let k = r + arah; k >= 0 && k < baris.length; k += arah) {
-          if (baris[k].jenis === "barang" || c === "uraian") {
-            fokus(k, c);
-            return;
-          }
-        }
+        const k = r + (e.key === "ArrowDown" ? 1 : -1);
+        if (k >= 0 && k < nilai.length) fokus(k, c);
         return;
       }
       case "ArrowLeft":
@@ -1340,24 +1210,12 @@ export function TabelHps({
         const s = el.selectionStart ?? 0;
         const t = el.selectionEnd ?? 0;
         if (!(seluruh(el) || (kiri ? s === 0 && t === 0 : s === el.value.length && t === el.value.length))) return;
-        const kolomBaris = b.jenis === "barang" ? KOLOM_BARANG : (["uraian"] as KolomBarang[]);
-        const k = kolomBaris.indexOf(c) + (kiri ? -1 : 1);
-        if (k < 0 || k >= kolomBaris.length) return;
+        const k = KOLOM_BARANG.indexOf(c) + (kiri ? -1 : 1);
+        if (k < 0 || k >= KOLOM_BARANG.length) return;
         e.preventDefault();
-        fokus(r, kolomBaris[k]);
+        fokus(r, KOLOM_BARANG[k]);
         return;
       }
-      case "Backspace":
-        if (b.jenis !== "spek" || e.altKey || e.ctrlKey || e.metaKey) return;
-        if (kosong) {
-          e.preventDefault();
-          hapusSpek(b.i, b.j, "sebelum");
-        } else if (el.selectionStart === 0 && el.selectionEnd === 0) {
-          // seperti menghapus tanda poin di daftar: spesifikasi menjadi barang
-          e.preventDefault();
-          jadikanBarang(b.i, b.j);
-        }
-        return;
     }
   };
 
@@ -1471,52 +1329,13 @@ export function TabelHps({
             </tr>
           </thead>
           <tbody>
-            {baris.map((b, r) => {
-              const x = nilai[b.i];
-              if (b.jenis === "spek")
-                return (
-                  <tr key={`${x.kunci}-s${b.j}`} className="g-spek">
-                    <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
-                    <td className={"g-sel" + blok.kelas(r, 1)} {...atributSel(r, 1)}>
-                      <div className="g-spek-isi">
-                        <span className="g-poin" aria-hidden="true">
-                          -
-                        </span>
-                        <input
-                          data-r={r}
-                          data-c="uraian"
-                          value={x.spek[b.j]}
-                          maxLength={200}
-                          onChange={(e) => ubahSpek(b.i, b.j, e.target.value)}
-                          placeholder="spesifikasi"
-                          aria-label={`Spesifikasi ${b.j + 1} barang/jasa baris ${b.i + 1}`}
-                          autoComplete="off"
-                        />
-                      </div>
-                    </td>
-                    {[2, 3, 4, 5, 6].map((c) => (
-                      <td key={c} className={"g-mati" + blok.kelas(r, c)} {...atributSel(r, c)} />
-                    ))}
-                    <td className="g-aksi">
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        className="g-ib bahaya"
-                        title="Hapus baris spesifikasi"
-                        aria-label={`Hapus spesifikasi ${b.j + 1} barang/jasa baris ${b.i + 1}`}
-                        onClick={() => hapusSpek(b.i, b.j, "tetap")}
-                      >
-                        <Icon name="close" size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                );
+            {nilai.map((x, r) => {
               const total = (Number(x.jumlah) || 0) * (Number(x.harga) || 0);
-              const label = `baris ${b.i + 1}`;
+              const label = `baris ${r + 1}`;
               return (
                 <tr key={x.kunci} className="g-barang">
                   <td className={"g-no num" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" title="Pilih seluruh baris">
-                    {nomor[b.i] || ""}
+                    {nomor[r] || ""}
                   </td>
                   <td className={kelasSel(x, "uraian") + blok.kelas(r, 1)} {...atributSel(r, 1)}>
                     <input
@@ -1524,8 +1343,8 @@ export function TabelHps({
                       data-c="uraian"
                       value={x.uraian}
                       maxLength={200}
-                      onChange={(e) => ubah(b.i, "uraian", e.target.value)}
-                      placeholder={b.i === 0 && kosongSemua ? "Ketik uraian, atau tempel daftar dari Excel (⌘V / Ctrl+V)" : undefined}
+                      onChange={(e) => ubah(r, "uraian", e.target.value)}
+                      placeholder={r === 0 && kosongSemua ? "Ketik uraian, atau tempel daftar dari Excel (⌘V / Ctrl+V)" : undefined}
                       aria-label={`Uraian ${label}`}
                       autoComplete="off"
                     />
@@ -1535,7 +1354,7 @@ export function TabelHps({
                       data-r={r}
                       data-c="jumlah"
                       value={x.jumlah}
-                      onChange={(v) => ubah(b.i, "jumlah", v)}
+                      onChange={(v) => ubah(r, "jumlah", v)}
                       maks={6}
                       placeholder=""
                       aria-label={`Jumlah ${label}`}
@@ -1548,7 +1367,7 @@ export function TabelHps({
                       list="satuan-umum"
                       value={x.satuan}
                       maxLength={30}
-                      onChange={(e) => ubah(b.i, "satuan", e.target.value)}
+                      onChange={(e) => ubah(r, "satuan", e.target.value)}
                       aria-label={`Satuan ${label}`}
                       autoComplete="off"
                     />
@@ -1558,7 +1377,7 @@ export function TabelHps({
                       data-r={r}
                       data-c="harga"
                       value={x.harga}
-                      onChange={(v) => ubah(b.i, "harga", v)}
+                      onChange={(v) => ubah(r, "harga", v)}
                       maks={11}
                       placeholder=""
                       aria-label={`Harga satuan ${label}`}
@@ -1573,7 +1392,7 @@ export function TabelHps({
                       data-c="ket"
                       value={x.ket}
                       maxLength={100}
-                      onChange={(e) => ubah(b.i, "ket", e.target.value)}
+                      onChange={(e) => ubah(r, "ket", e.target.value)}
                       aria-label={`Keterangan ${label}`}
                       autoComplete="off"
                     />
@@ -1583,13 +1402,13 @@ export function TabelHps({
                       type="button"
                       tabIndex={-1}
                       className="g-ib"
-                      title="Tambah baris spesifikasi (Alt+Enter)"
-                      aria-label={`Tambah spesifikasi ${label}`}
-                      onClick={() => tambahSpek(b.i)}
+                      title="Sisipkan baris di bawah (Alt+Enter)"
+                      aria-label={`Sisipkan baris di bawah ${label}`}
+                      onClick={() => tambahBaris(r)}
                     >
                       <Icon name="plus" size={14} />
                     </button>
-                    <button type="button" tabIndex={-1} className="g-ib bahaya" title="Hapus baris" aria-label={`Hapus ${label}`} onClick={() => hapusBaris(b.i)}>
+                    <button type="button" tabIndex={-1} className="g-ib bahaya" title="Hapus baris" aria-label={`Hapus ${label}`} onClick={() => hapusBaris(r)}>
                       <Icon name="trash" size={14} />
                     </button>
                   </td>
@@ -1611,17 +1430,12 @@ export function TabelHps({
           Tambah baris
         </button>
         <p className="tabel-isian-petunjuk">
-          <b>Spesifikasi</b> ditulis di kolom Uraian pada baris di bawah barangnya, diawali <kbd>-</kbd> lalu spasi (atau tombol <b>+</b> di
-          ujung baris
-          <span className="tip-mouse">
-            {" "}
-            / <kbd>Alt/⌥</kbd>+<kbd>Enter</kbd>
-          </span>
-          ).{" "}
+          Satu baris = satu barang/jasa; keterangan barang ditulis langsung di <b>Uraian</b> (mis. <i>Solar non subsidi</i>).{" "}
           <span className="tip-mouse">
             <b>Seperti Excel:</b> blok sel dengan seret mouse, <kbd>Shift</kbd>+klik, atau <kbd>Shift</kbd>+panah (klik nomor baris / judul kolom
             untuk baris / kolom penuh) · <kbd>Ctrl/⌘</kbd>+<kbd>C</kbd> salin · <kbd>Ctrl/⌘</kbd>+<kbd>V</kbd> tempel mulai sel kiri-atas blok ·{" "}
-            <kbd>Delete</kbd> kosongkan · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> urungkan · klik dua kali / <kbd>F2</kbd> sunting sel.{" "}
+            <kbd>Delete</kbd> kosongkan · <kbd>Ctrl/⌘</kbd>+<kbd>Z</kbd> urungkan · klik dua kali / <kbd>F2</kbd> sunting sel ·{" "}
+            <kbd>Alt/⌥</kbd>+<kbd>Enter</kbd> sisipkan baris.{" "}
           </span>
           Baris kosong tidak ikut disimpan · maksimal {MAKS_BARANG} barang/jasa.
         </p>
@@ -1644,7 +1458,7 @@ export function TabelHps({
           onMasukkan={(p) => {
             const tp: TempelAktif = { ...dialog, tafsir: p.tafsir, paksa: p.paksa, asal: { ...dialog.asal, mode: p.mode } };
             setDialog(null);
-            pasang(tp, golongkan(dialog.data, p.tafsir, p.paksa), p.susunan, true);
+            pasang(tp, golongkanHps(dialog.data, p.tafsir, p.paksa), p.susunan, true);
           }}
         />
       )}
@@ -1726,7 +1540,7 @@ export function TabelBeli({
     const b = baris[r];
     if (!b) return "";
     const x = item[b.i];
-    if (b.jenis === "spek") return c === 1 ? `- ${x.spesifikasi[b.j]}` : "";
+    if (b.jenis === "spek") return c === 1 ? x.spesifikasi[b.j] : "";
     const h = Number(harga[b.i]) || 0;
     return [String(b.i + 1), x.uraian, String(x.jumlah), x.satuan, String(x.hargaHps), harga[b.i] ?? "", h ? String(x.jumlah * h) : ""][c] ?? "";
   };
@@ -2035,7 +1849,7 @@ export function TabelBeli({
                   <tr key={`${b.i}-s${b.j}`} className="g-spek">
                     <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
                     <td className={"g-teks g-teks-spek" + blok.kelas(r, 1)} {...atributSel(r, 1)}>
-                      - {x.spesifikasi[b.j]}
+                      {x.spesifikasi[b.j]}
                     </td>
                     {[2, 3, 4, 5, 6].map((c) => (
                       <td key={c} className={"g-mati" + blok.kelas(r, c)} {...atributSel(r, c)} />
@@ -2145,7 +1959,7 @@ export function TabelLampiran({
     const b = baris[r];
     if (!b) return "";
     const x = item[b.i];
-    if (b.jenis === "spek") return c === 1 ? `- ${x.spesifikasi[b.j]}` : "";
+    if (b.jenis === "spek") return c === 1 ? x.spesifikasi[b.j] : "";
     switch (jenisKolom[c]) {
       case "no":
         return String(b.i + 1);
@@ -2299,7 +2113,7 @@ export function TabelLampiran({
                   <tr key={`${b.i}-s${b.j}`} className="g-spek">
                     <td className={"g-no" + blok.kelas(r, 0) + blok.kelasBaris(r)} {...atributSel(r, 0)} data-penuh="1" />
                     <td className={"g-teks g-teks-spek" + blok.kelas(r, 1)} {...atributSel(r, 1)}>
-                      - {x.spesifikasi[b.j]}
+                      {x.spesifikasi[b.j]}
                     </td>
                     {Array.from({ length: kolom - 2 }, (_, k) => k + 2).map((c) => (
                       <td key={c} className={"g-mati" + blok.kelas(r, c)} {...atributSel(r, c)} />
